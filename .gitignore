@@ -1,0 +1,60 @@
+# Python caches and environments
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Compiled and build artifacts
+*.so
+*.o
+*.a
+build/
+dist/
+legacy/bin/
+legacy/build.log
+legacy/results/
+legacy/
+accelerated_unwrap/_cython_backend.c
+
+# Jupyter and editor state
+.ipynb_checkpoints/
+.idea/
+.vscode/
+
+# LaTeX intermediate files
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.toc
+*.synctex.gz
+
+# Local reports and machine-specific output
+reports/
+isce.log
+*.pdf
+
+# Third-party or provenance-restricted reference material
+PhaseUnwrapping2D.zip
+PhaseUnwrapping2D/
+weighed_phase_unwrap-master.zip
+weighed_phase_unwrap-master/
+uw2code_fixes.doc
+code/
+data/
+ghiglia_pritt_code/
+
+# Separate local git metadata used when workspace metadata is unavailable
+.parvaneh_git/
+
+# Local historical-data notebooks retained outside the independent release
+notebooks/all_data_examples.ipynb
+notebooks/chapter_03_phase_quality_masks_filters.ipynb
+notebooks/chapter_04_path_following_methods.ipynb
+notebooks/chapter_05_minimum_norm_methods.ipynb
+notebooks/chapter_06_comparisons_and_conclusion.ipynb

@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the archived Zenodo release."
+title: "Parvaneh: Accelerated two-dimensional phase unwrapping"
+type: software
+authors:
+  - family-names: "Mohseni Aref"
+    given-names: "Mohammad"
+    orcid: "https://orcid.org/0000-0003-3735-178X"
+version: 0.1.0a1
+date-released: 2026-09-11
+license: BSD-3-Clause
+repository-code: "https://github.com/mohseniaref/Parvaneh"
+abstract: >-
+  Independent Python implementations, synthetic correctness tests, generic
+  raster I/O, and warmed benchmarks for two-dimensional phase unwrapping.

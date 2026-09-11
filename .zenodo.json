@@ -1,0 +1,22 @@
+{
+  "title": "Parvaneh: Accelerated two-dimensional phase unwrapping",
+  "upload_type": "software",
+  "description": "Independent Python implementations, synthetic correctness tests, generic raster I/O, and reproducible benchmarks for two-dimensional phase unwrapping.",
+  "creators": [
+    {
+      "name": "Mohseni Aref, Mohammad",
+      "orcid": "0000-0003-3735-178X"
+    }
+  ],
+  "access_right": "open",
+  "license": "BSD-3-Clause",
+  "keywords": [
+    "phase unwrapping",
+    "interferometry",
+    "image processing",
+    "Numba",
+    "Cython",
+    "CuPy"
+  ],
+  "version": "0.1.0a1"
+}

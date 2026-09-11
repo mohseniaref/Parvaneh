@@ -1,0 +1,142 @@
+import numpy as np
+import pytest
+from accelerated_unwrap import (available_backends, discontinuity_map,
+                                flynn_unwrap, goldstein_unwrap,
+                                make_synthetic,
+                                mask_cut_unwrap,
+                                phase_residues,
+                                quality_guided_unwrap, read_raw_raster,
+                                rmse_aligned, surface_difference, unwrap, unwrap_lp,
+                                wrapped_gradients, write_raw_raster)
+
+
+CPU_BACKENDS = [name for name, usable in available_backends().items()
+                if usable and name != "cupy"]
+
+
+@pytest.mark.parametrize("backend", CPU_BACKENDS)
+def test_rectangular_synthetic(backend):
+    truth, wrapped, weight = make_synthetic((48, 71), noise=0.001)
+    result, info = unwrap(wrapped, weight, backend=backend, max_iter=80, return_info=True)
+    assert result.shape == truth.shape
+    assert np.isfinite(result).all()
+    assert info.relative_residual < 1e-5
+    assert rmse_aligned(result, truth) < 0.02
+
+
+def test_unweighted_converges_in_one_iteration():
+    truth, wrapped, _ = make_synthetic((40, 52), noise=0)
+    result, info = unwrap(wrapped, backend="numpy", return_info=True)
+    assert info.iterations == 1
+    assert rmse_aligned(result, truth) < 1e-10
+
+
+def test_parallel_dct_workers_preserve_result():
+    _, wrapped, weight = make_synthetic((32, 43), noise=0.01)
+    serial = unwrap(wrapped, weight, workers=1)
+    parallel = unwrap(wrapped, weight, workers=-1)
+    assert np.allclose(serial, parallel, atol=1e-11)
+
+
+def test_bad_weight_rejected():
+    with pytest.raises(ValueError):
+        unwrap(np.zeros((4, 4)), -np.ones((4, 4)))
+
+
+def test_generic_raw_raster_round_trip(tmp_path):
+    original = np.linspace(-np.pi, np.pi, 35).reshape(5, 7)
+    path = write_raw_raster(tmp_path / "phase.f32", original, dtype="<f4")
+    restored = read_raw_raster(path, original.shape, dtype="<f4")
+    assert restored.shape == original.shape
+    assert np.allclose(restored, original, atol=2e-7)
+
+
+def test_generic_raw_raster_scale_and_size_validation(tmp_path):
+    codes = np.arange(12, dtype=np.uint8).reshape(3, 4)
+    path = write_raw_raster(tmp_path / "codes.u8", codes, dtype=np.uint8)
+    restored = read_raw_raster(path, (3, 4), dtype=np.uint8,
+                               scale=2 * np.pi / 256, offset=-np.pi)
+    assert restored[0, 0] == pytest.approx(-np.pi)
+    with pytest.raises(ValueError, match="expected"):
+        read_raw_raster(path, (4, 4), dtype=np.uint8)
+
+
+def test_residue_charge_on_synthetic_vortex():
+    y, x = np.mgrid[-1:1:41j, -1:1:41j]
+    wrapped = np.arctan2(y - 0.02, x - 0.03)
+    residues = phase_residues(wrapped)
+    assert np.count_nonzero(residues) == 1
+    assert abs(int(residues.sum())) == 1
+
+
+def test_quality_guided_unwrap_is_phase_congruent():
+    truth, wrapped, weight = make_synthetic((43, 57), noise=0)
+    result = quality_guided_unwrap(wrapped, quality=weight)
+    cycles = (result - wrapped) / (2 * np.pi)
+    assert np.max(np.abs(cycles - np.rint(cycles))) < 1e-12
+    assert rmse_aligned(result, truth) < 1e-10
+    rdx, rdy = wrapped_gradients(result)
+    wdx, wdy = wrapped_gradients(wrapped)
+    assert np.allclose(rdx, wdx)
+    assert np.allclose(rdy, wdy)
+
+
+def test_numba_quality_path_matches_python_reference():
+    _, wrapped, _ = make_synthetic((43, 57), noise=0.01)
+    python = quality_guided_unwrap(wrapped, "min_gradient", backend="python")
+    compiled = quality_guided_unwrap(wrapped, "min_gradient", backend="numba")
+    assert np.allclose(compiled, python, atol=1e-6)
+
+
+def test_lp_two_matches_least_squares():
+    _, wrapped, _ = make_synthetic((35, 47), noise=0.01)
+    assert np.allclose(unwrap_lp(wrapped, p=2), unwrap(wrapped), atol=1e-11)
+
+
+def test_lp_irls_is_finite_and_reports_iterations():
+    _, wrapped, _ = make_synthetic((35, 47), noise=0.01)
+    result, info = unwrap_lp(wrapped, p=1.2, outer_iter=4, return_info=True)
+    assert np.isfinite(result).all()
+    assert 1 <= info.outer_iterations <= 4
+    assert info.inner_iterations >= info.outer_iterations
+    assert np.isfinite(info.objective)
+
+
+def test_lp_rejects_nonconvex_request():
+    with pytest.raises(ValueError):
+        unwrap_lp(np.zeros((4, 4)), p=0.5)
+
+
+def test_goldstein_smooth_synthetic_and_cut_shape():
+    truth, wrapped, _ = make_synthetic((31, 39), noise=0)
+    result, cuts = goldstein_unwrap(wrapped, return_cuts=True)
+    assert cuts.shape == wrapped.shape and cuts.dtype == bool
+    assert rmse_aligned(result, truth) < 1e-5
+
+
+def test_mask_cut_smooth_synthetic():
+    truth, wrapped, _ = make_synthetic((25, 31), noise=0)
+    result, cuts = mask_cut_unwrap(wrapped, return_cuts=True)
+    assert cuts.shape == wrapped.shape
+    assert rmse_aligned(result, truth) < 1e-5
+
+
+def test_surface_diagnostics_remove_offset_and_find_jump():
+    surface = np.zeros((5, 6))
+    surface[:, 3:] = 2 * np.pi
+    difference, metrics = surface_difference(surface + 7, surface,
+                                             return_metrics=True)
+    assert np.max(np.abs(difference)) < 1e-12
+    assert metrics.mean_offset == pytest.approx(7)
+    jumps, fraction = discontinuity_map(surface, return_fraction=True)
+    assert jumps[:, 2].sum() == 4
+    assert fraction == pytest.approx(4 / 20)
+
+
+def test_flynn_result_is_phase_congruent():
+    _, wrapped, _ = make_synthetic((17, 23), noise=0)
+    result, iterations = flynn_unwrap(wrapped, return_iterations=True)
+    cycles = (result - wrapped) / (2 * np.pi)
+    cycles -= cycles.flat[0]
+    assert np.max(np.abs(cycles - np.rint(cycles))) < 2e-6
+    assert iterations > 0
