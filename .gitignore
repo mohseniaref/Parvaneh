@@ -39,6 +39,10 @@ reports/
 isce.log
 *.pdf
 
+# Local planning notes and internal working documents.
+# Roadmap, decision log, and review records live here and are never published.
+docs/_local/
+
 # Third-party or provenance-restricted reference material
 PhaseUnwrapping2D.zip
 PhaseUnwrapping2D/
