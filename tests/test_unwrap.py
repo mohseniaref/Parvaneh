@@ -168,6 +168,46 @@ def test_mask_cut_smooth_synthetic():
     assert rmse_aligned(result, truth) < 1e-5
 
 
+@pytest.mark.parametrize("algorithm", [goldstein_unwrap, mask_cut_unwrap])
+def test_branch_cut_algorithms_unwrap_valid_pixels_touching_a_mask(algorithm):
+    """A valid pixel beside the mask is data, not a border.
+
+    Both algorithms exclude the invalid region grown by one pixel from residue
+    counting and cut growth, so that a quad straddling the edge of the data is
+    not mistaken for a residue.  That guard once reached the integration step
+    as well, which left a one-pixel frame of valid pixels at zero and made them
+    wrong by several whole cycles.  A cropped mask puts the frame at the image
+    edge and an interior hole puts it in the middle of the scene.
+    """
+    truth, wrapped, _ = make_synthetic((32, 44), noise=0)
+    cropped = np.zeros(truth.shape, dtype=bool)
+    cropped[2:-2, 2:-2] = True
+    holed = np.ones(truth.shape, dtype=bool)
+    holed[10:18, 14:30] = False
+    rows, cols = truth.shape
+
+    for valid in (cropped, holed):
+        result, cuts = algorithm(wrapped, mask=valid, return_cuts=True)
+        assert cuts.shape == wrapped.shape
+        usable = valid & ~cuts
+        difference = result - truth
+        difference -= np.median(difference[usable])
+        # 1e-4 rad leaves room for the float32 accumulation of the integrator;
+        # the defect this pins was wrong by more than 1 rad.
+        assert np.max(np.abs(difference[usable])) < 1e-4
+
+        padded = np.pad(~valid, 1, constant_values=True)
+        touching = np.zeros(truth.shape, dtype=bool)
+        for row_offset in range(3):
+            for col_offset in range(3):
+                touching |= padded[row_offset:row_offset + rows,
+                                   col_offset:col_offset + cols]
+        on_the_edge = valid & touching
+        assert on_the_edge.any() and np.any(on_the_edge & usable)
+        assert np.max(np.abs(difference[on_the_edge & usable])) < 1e-4
+        assert not np.any(result[usable] == 0)
+
+
 def test_surface_diagnostics_remove_offset_and_find_jump():
     surface = np.zeros((5, 6))
     surface[:, 3:] = 2 * np.pi

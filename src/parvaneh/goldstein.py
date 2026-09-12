@@ -151,11 +151,18 @@ def _branch_cuts(charges, border, max_cut_length):
     return cuts
 
 
-def _unwrap_around_cuts(phase, cuts, border):
+def _unwrap_around_cuts(phase, cuts, blocked):
+    """Integrate the wrapped field away from the cuts.
+
+    ``blocked`` marks the pixels that carry no usable phase, so they are never
+    entered and keep their initial value of zero.  Cut pixels are likewise left
+    at zero.  Every other pixel, including a valid pixel that merely touches a
+    masked one, is integrated normally.
+    """
     rows, cols = phase.shape
     output = np.zeros(phase.shape, dtype=np.float32)
     accepted = np.zeros(phase.shape, dtype=bool)
-    avoid = cuts | border
+    avoid = cuts | blocked
     pieces = 0
     for start in range(rows * cols):
         row, col = divmod(start, cols)
@@ -208,6 +215,9 @@ def goldstein_unwrap(phase, mask=None, *, max_cut_length=None,
 
     The output uses radians.  ``mask`` is true for valid pixels.  The optional
     cut map is a boolean pixel mask suitable for plotting and diagnostics.
+    Pixels outside ``mask`` and pixels on a cut keep the value zero, because
+    no phase can be assigned there; every other valid pixel is unwrapped,
+    including the ones that only touch the mask.
     """
     phase = np.asarray(phase, dtype=np.float64)
     if phase.ndim != 2 or min(phase.shape) < 2 or not np.isfinite(phase).all():
@@ -215,7 +225,13 @@ def goldstein_unwrap(phase, mask=None, *, max_cut_length=None,
     valid = np.ones(phase.shape, dtype=bool) if mask is None else np.asarray(mask, dtype=bool)
     if valid.shape != phase.shape:
         raise ValueError("mask must match phase.shape")
-    border = ~valid
+    invalid = ~valid
+    # The guard is the invalid region grown by one pixel.  Residue counting and
+    # branch-cut growth need it, because a quad that straddles the edge of the
+    # data has no phase continuity and would report a spurious residue.  The
+    # guard must not reach the integration step: its pixels are valid data and
+    # have to be unwrapped like any other.
+    border = invalid
     if border.any():
         border = maximum_filter(border.astype(np.uint8), size=3) != 0
     cycles = (((phase + np.pi) / (2 * np.pi)) % 1.0).astype(np.float32)
@@ -223,7 +239,7 @@ def goldstein_unwrap(phase, mask=None, *, max_cut_length=None,
     if max_cut_length is None:
         max_cut_length = sum(phase.shape) // 2
     cuts = _branch_cuts(charges, border, max_cut_length)
-    output, _ = _unwrap_around_cuts(cycles, cuts, border)
+    output, _ = _unwrap_around_cuts(cycles, cuts, invalid)
     output = output.astype(np.float64) * (2 * np.pi)
     return (output, cuts) if return_cuts else output
 
@@ -299,19 +315,27 @@ def _thin_mask(cuts, charges, border):
 
 
 def mask_cut_unwrap(phase, mask=None, *, return_cuts=False):
-    """Quality-guided mask-cut unwrapping using minimum-gradient paths."""
+    """Quality-guided mask-cut unwrapping using minimum-gradient paths.
+
+    ``mask`` is true for valid pixels; pixels outside it and pixels on a cut
+    keep the value zero.
+    """
     phase = np.asarray(phase, dtype=np.float64)
     if phase.ndim != 2 or min(phase.shape) < 2 or not np.isfinite(phase).all():
         raise ValueError("phase must be a finite 2-D array with dimensions >= 2")
     valid = np.ones(phase.shape, dtype=bool) if mask is None else np.asarray(mask, dtype=bool)
     if valid.shape != phase.shape:
         raise ValueError("mask must match phase.shape")
-    border = ~valid
+    invalid = ~valid
+    # Same split as in goldstein_unwrap: the guard fed to the cut stages is the
+    # invalid region grown by one pixel, while integration only skips pixels
+    # that really carry no phase.
+    border = invalid
     if border.any():
         border = maximum_filter(border.astype(np.uint8), size=3) != 0
     cycles = (((phase + np.pi) / (2 * np.pi)) % 1.0).astype(np.float32)
     charges = _residue_charges_cycles(cycles, border)
     cuts = _thin_mask(_quality_guided_mask(cycles, charges, border), charges, border)
-    output, _ = _unwrap_around_cuts(cycles, cuts, border)
+    output, _ = _unwrap_around_cuts(cycles, cuts, invalid)
     output = output.astype(np.float64) * (2 * np.pi)
     return (output, cuts) if return_cuts else output
