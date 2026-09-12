@@ -25,6 +25,13 @@ from the repository root instead — the two are equivalent:
 python -m parvaneh --help
 ```
 
+A fresh clone also carries a launcher that adds `src/` to the import path for
+you, so the CLI is one command away before anything is installed:
+
+```bash
+python unwrap.py unwrap wrapped.tif -o unwrapped.tif
+```
+
 ## Two ways to spell a command
 
 ```bash
@@ -56,8 +63,9 @@ Three things worth knowing immediately:
 - **The default method is `ls`** (least squares). It is the safest first guess.
 - **The output offset is adjusted** so that the result lines up with the input
   phase (see [The offset question](#the-offset-question) below).
-- **`-o` decides the format** by its extension: `.npy`, `.npz`, or anything
-  else, which is treated as a headerless raw raster.
+- **`-o` decides the format** by its extension: `.npy`, `.npz`, a GeoTIFF or
+  another GDAL raster if the suffix is a known raster suffix, and anything else,
+  which is treated as a headerless raw raster.
 
 ## Listing the algorithms
 
@@ -129,6 +137,70 @@ integers, for example a product whose phase is `value * 0.001` radians:
 parvaneh unwrap wrapped.int16 --shape 1024 1024 --dtype '<i2' \
     --scale 0.001 -o unwrapped.raw --out-dtype '<f4'
 ```
+
+### GDAL rasters — GeoTIFF and similar files
+
+A GeoTIFF already carries its own shape, data type, and georeferencing, so
+nothing else is needed:
+
+```bash
+parvaneh unwrap wrapped.tif -o unwrapped.tif --method ls
+```
+
+The **suffix** decides how a file is opened. These are treated as georeferenced
+rasters:
+
+```text
+.tif .tiff .gtif .gtiff .cog .img .vrt .ers .hgt .grd .bil .bsq .bip
+.flt .dem .dt0 .dt1 .dt2 .asc .nc .hdf .h5 .he5 .jp2 .png .bmp
+```
+
+Everything else is `.npy`, `.npz`, or raw. GDAL, not this list, decides whether
+the bytes really are a raster, so a suffix missing from the list can still be
+opened by calling `parvaneh.raster.read_raster` from Python.
+
+Four things behave differently from raw input:
+
+- **No-data becomes invalid.** A band that declares a no-data value has those
+  pixels turned into `NaN`. They are excluded from the unwrapping and written
+  back as no-data in the output, so a masked product survives a round trip
+  through the CLI unchanged. `-q` hides the note; it does not undo the
+  exclusion. A GeoTIFF whose validity lives in a separate mask band, rather
+  than in a no-data value, should be passed through `--mask` explicitly.
+- **`--band N` chooses the band** to read, counting from 1 (default: 1). The
+  same option is used when `--mask` or `--weight` names a raster.
+- **The output inherits the grid.** `-o unwrapped.tif` copies the geotransform
+  and the coordinate reference of the input, and keeps the input's dtype when
+  that dtype can hold a phase. An integer band cannot, so the output is
+  `float32` unless `--out-dtype` says otherwise.
+- **Only some suffixes can be written.** A suffix that names a readable but
+  non-creatable format is refused instead of being given a GeoTIFF's bytes
+  under a misleading name:
+
+| Output suffix | Driver created | Note |
+|---|---|---|
+| `.tif`, `.tiff`, `.gtif`, `.gtiff` | `GTiff` | the safe default |
+| `.cog` | `COG` | cloud-optimised GeoTIFF |
+| `.img` | `HFA` | Erdas Imagine |
+| any other suffix in the list above | — | refused, with advice to write a GeoTIFF |
+
+```text
+error: cannot write out.vrt: writing '.vrt' files is not supported; write a GeoTIFF (.tif) or pass driver= explicitly
+```
+
+Raster support is **optional**. If neither `rasterio` nor `osgeo.gdal` is
+installed, a raster path fails with instructions instead of a traceback:
+
+```text
+error: cannot read wrapped.tif: this file needs a GDAL binding, and neither rasterio nor osgeo.gdal is installed.
+Install the optional extra, which pulls in rasterio:
+    pip install 'parvaneh[geo]'
+or the official GDAL bindings from your package manager (python3-gdal).
+Headerless data does not need GDAL: use .npy/.npz, or a raw raster with --shape and --dtype.
+```
+
+Install the extra with `python -m pip install -e '.[numba,geo]'`. The Python
+side of the same feature is documented in [`raster_io.md`](raster_io.md).
 
 ### Non-finite pixels in a raw output
 

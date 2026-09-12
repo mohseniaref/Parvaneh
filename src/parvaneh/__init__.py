@@ -13,6 +13,8 @@ from .minimum_norm import unwrap_lp
 from .goldstein import goldstein_unwrap, mask_cut_unwrap
 from .diagnostics import discontinuity_map, surface_difference
 from .flynn import flynn_unwrap
+from .raster import (RasterError, RasterMeta, NoRasterBackendError,
+                     read_raster, raster_backend, write_raster)
 
 __all__ = [
     "available_backends", "unwrap", "make_synthetic", "rmse_aligned",
@@ -26,4 +28,6 @@ __all__ = [
     "mask_cut_unwrap",
     "surface_difference", "discontinuity_map",
     "flynn_unwrap",
+    "read_raster", "write_raster", "raster_backend", "RasterMeta",
+    "RasterError", "NoRasterBackendError",
 ]

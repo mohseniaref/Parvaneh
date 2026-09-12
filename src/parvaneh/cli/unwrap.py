@@ -11,7 +11,9 @@ out::
     parvaneh wrapped.raw --shape 1024 1024 --method goldstein -o out.npy
 
 Headerless raw rasters need explicit ``--shape`` and ``--dtype`` flags; ``.npy``
-and ``.npz`` inputs carry their own metadata and need nothing extra.
+and ``.npz`` inputs carry their own metadata and need nothing extra, and a
+georeferenced raster (GeoTIFF and friends) is read through GDAL, which brings its
+own geotransform, projection and nodata value.
 
 All progress and diagnostic chatter goes to stderr, so the ``--info`` JSON on
 stdout stays clean for piping::
@@ -36,6 +38,7 @@ from ..minimum_norm import unwrap_lp
 from ..path_following import quality_guided_unwrap
 from ..quality import (derivative_variance_quality, max_gradient_quality,
                        pseudocorrelation_quality)
+from ..raster import RASTER_SUFFIXES, RasterError, read_raster, write_raster
 from .base import CommandParser, log
 
 
@@ -82,6 +85,9 @@ examples:
   # low-coherence data: hide unreliable pixels behind a validity mask
   parvaneh unwrap wrapped.npy --method quality-guided --mask valid.npy -o out.npy
 
+  # georeferenced raster in and out, keeping the geotransform and the CRS
+  parvaneh unwrap wrapped.tif --method goldstein -o unwrapped.tif
+
   # cheapest way to get a quick look at a big raster
   parvaneh unwrap big.raw --shape 4096 4096 --tol 1e-6 --max-iter 40 -o big-u.raw
 
@@ -96,28 +102,35 @@ examples:
 
     io_group = parser.add_argument_group("input/output")
     io_group.add_argument("--shape", nargs=2, type=int, metavar=("ROWS", "COLS"),
-                          help="shape of a headerless raw raster (required for "
-                               "anything that is not .npy or .npz)")
+                          help="shape of a headerless raw raster (not needed for "
+                               ".npy, .npz or a georeferenced raster)")
     io_group.add_argument("--dtype", default="<f4",
                           help="dtype of a headerless raw input (default: <f4)")
+    io_group.add_argument("--band", type=int, default=1,
+                          help="band to read from a georeferenced raster, "
+                               "counting from 1 (default: 1)")
     io_group.add_argument("--out-dtype", default=None,
-                          help="dtype for a headerless raw output "
-                               "(default: same as --dtype)")
+                          help="dtype of the output; raw output falls back to "
+                               "--dtype, raster output to the input raster "
+                               "(default: see those)")
     io_group.add_argument("--order", choices=("C", "F"), default="C",
                           help="memory order of headerless raw rasters (default: C)")
     io_group.add_argument("--scale", type=float, default=1.0,
-                          help="multiply raw input by this before unwrapping")
+                          help="multiply raw or raster input by this before "
+                               "unwrapping")
     io_group.add_argument("--offset", type=float, default=0.0,
-                          help="add this to raw input after scaling")
+                          help="add this to raw or raster input after scaling")
     io_group.add_argument("--npz-key", default="phase",
                           help="array name inside .npz files (default: phase)")
     io_group.add_argument("--invalid-fill", type=float, default=None,
                           help="value used to replace non-finite output pixels "
-                               "when writing a raw raster, which cannot store "
-                               "NaN (default: refuse and explain)")
+                               "when the output format cannot store NaN "
+                               "(default: refuse and explain)")
 
     aux_group = parser.add_argument_group("mask and weight")
-    aux_group.add_argument("--mask", help="validity mask; non-zero means valid")
+    aux_group.add_argument("--mask", help="validity mask; non-zero means valid "
+                                          "(in a georeferenced raster, a nodata "
+                                          "pixel is never valid)")
     aux_group.add_argument("--mask-dtype", default="<f4",
                            help="dtype of a headerless raw --mask (default: <f4)")
     aux_group.add_argument("--weight", help="nonnegative least-squares weight "
@@ -202,14 +215,28 @@ def print_methods():
     print("\n".join(lines))
 
 
-def _load(path, *, shape, dtype, order, npz_key, what, scale=1.0, offset=0.0):
-    """Read a 2-D array from ``.npy``, ``.npz`` or a headerless raw raster."""
+def _load(path, *, shape, dtype, order, npz_key, what, scale=1.0, offset=0.0,
+          band=1):
+    """Read a 2-D array from ``.npy``, ``.npz``, a raster or a headerless file.
+
+    Returns ``(array, meta)``.  ``meta`` is a
+    :class:`~parvaneh.raster.RasterMeta` for georeferenced input, which is what
+    lets the output inherit the same grid, and ``None`` for the other formats.
+    """
     source = Path(path)
     if not source.exists():
         raise SystemExit("error: %s file not found: %s" % (what, source))
 
     suffix = source.suffix.lower()
-    if suffix == ".npy":
+    meta = None
+    if suffix in RASTER_SUFFIXES:
+        try:
+            array, meta = read_raster(source, band=band, nodata_fill=np.nan)
+        except RasterError as exc:
+            raise SystemExit("error: cannot read %s: %s" % (source, exc))
+        if scale != 1.0 or offset != 0.0:
+            array = array * scale + offset
+    elif suffix == ".npy":
         array = np.load(str(source))
     elif suffix == ".npz":
         with np.load(str(source)) as bundle:
@@ -233,14 +260,16 @@ def _load(path, *, shape, dtype, order, npz_key, what, scale=1.0, offset=0.0):
     if array.ndim != 2:
         raise SystemExit("error: %s must be two-dimensional, got shape %s"
                          % (what, array.shape))
-    return array
+    return array, meta
 
 
-def _save(path, array, *, shape, dtype, order, npz_key, invalid_fill):
-    """Write a 2-D array to ``.npy``, ``.npz`` or a headerless raw raster."""
+def _save(path, array, *, shape, dtype, order, npz_key, invalid_fill, like=None):
+    """Write a 2-D array to ``.npy``, ``.npz``, a raster or a headerless file."""
     target = Path(path)
     suffix = target.suffix.lower()
 
+    if suffix in RASTER_SUFFIXES:
+        return _save_raster(target, array, dtype, invalid_fill, like)
     if suffix == ".npy":
         np.save(str(target), array)
         return
@@ -265,6 +294,42 @@ def _save(path, array, *, shape, dtype, order, npz_key, invalid_fill):
     try:
         write_raw_raster(target, array, dtype, order=order)
     except ValueError as exc:
+        raise SystemExit("error: cannot write %s: %s" % (target, exc))
+
+
+def _save_raster(target, array, dtype, invalid_fill, like):
+    """Write ``array`` as a raster, inheriting the grid of ``like`` if given."""
+    if dtype is None:
+        # An unwrapped phase is real-valued, so an integer input raster (a
+        # quality map, say) cannot be copied; float32 keeps the file small and
+        # still resolves a fringe many times over.
+        dtype = (like.dtype if like is not None
+                 and np.issubdtype(np.dtype(like.dtype), np.floating)
+                 else "float32")
+    floating = np.issubdtype(np.dtype(dtype), np.floating)
+    if invalid_fill is not None and not np.isfinite(invalid_fill):
+        raise SystemExit("error: --invalid-fill must be a finite number")
+    if not np.isfinite(array).all():
+        if not floating and invalid_fill is None:
+            raise SystemExit(
+                "error: the unwrapped phase contains non-finite pixels, which "
+                "the %s output dtype cannot store.\n"
+                "       Pass --invalid-fill VALUE to substitute a sentinel, or "
+                "use a floating-point --out-dtype such as float32."
+                % np.dtype(dtype).name)
+        if invalid_fill is not None:
+            array = np.where(np.isfinite(array), array, invalid_fill)
+
+    if invalid_fill is not None:
+        nodata = invalid_fill
+    else:
+        # NaN is the natural "no data" marker in a floating-point band; an
+        # integer band has no NaN, and a band with no invalid pixel has nothing
+        # to declare at all.
+        nodata = np.nan if floating and not np.isfinite(array).all() else None
+    try:
+        write_raster(target, array, like=like, dtype=dtype, nodata=nodata)
+    except RasterError as exc:
         raise SystemExit("error: cannot write %s: %s" % (target, exc))
 
 
@@ -339,18 +404,29 @@ def _load_mask(args):
     """Read ``--mask`` as a boolean validity map, or ``None`` when unset."""
     if args.mask is None:
         return None
-    mask = _load(args.mask, shape=args.shape, dtype=args.mask_dtype,
-                 order=args.order, npz_key=args.npz_key, what="mask")
-    return np.asarray(mask) != 0
+    mask, meta = _load(args.mask, shape=args.shape, dtype=args.mask_dtype,
+                       order=args.order, npz_key=args.npz_key, what="mask",
+                       band=args.band)
+    mask = np.asarray(mask)
+    if meta is not None:
+        # A raster can mark "no data" with a sentinel that became NaN, or with a
+        # flag value; either way the pixel is not valid.
+        return np.isfinite(mask) & (mask != 0)
+    return mask != 0
 
 
 def _load_weight(args):
     """Read ``--weight`` as a nonnegative float map, or ``None`` when unset."""
     if args.weight is None:
         return None
-    weight = _load(args.weight, shape=args.shape, dtype=args.weight_dtype,
-                   order=args.order, npz_key=args.npz_key, what="weight")
+    weight, meta = _load(args.weight, shape=args.shape, dtype=args.weight_dtype,
+                         order=args.order, npz_key=args.npz_key, what="weight",
+                         band=args.band)
     weight = np.asarray(weight, dtype=np.float64)
+    if meta is not None:
+        # Outside the valid footprint a raster weight is undefined, and zero
+        # weight means "ignore this pixel", which is exactly right.
+        weight = np.where(np.isfinite(weight), weight, 0.0)
     if not np.all(np.isfinite(weight)) or np.any(weight < 0):
         raise SystemExit("error: weight must be finite and nonnegative")
     return weight
@@ -358,6 +434,36 @@ def _load_weight(args):
 
 def _window_kwargs(args):
     return {} if args.window is None else {"window": args.window}
+
+
+def _output_dtype(args):
+    """Dtype to hand :func:`_save`, or ``None`` to let it choose.
+
+    A headerless raw raster has no metadata at all, so the fallback there is the
+    input dtype.  A georeferenced raster does have metadata, and the output
+    should keep the input grid's dtype whenever that can hold a phase.
+    """
+    if args.out_dtype is not None:
+        return args.out_dtype
+    if args.output is not None and Path(args.output).suffix.lower() in RASTER_SUFFIXES:
+        return None
+    return args.dtype
+
+
+def _raster_summary(meta):
+    """Describe an input raster for ``--info``.
+
+    ``json.dumps`` writes a bare ``NaN`` that no JSON reader accepts, so a NaN
+    nodata is reported as ``null`` instead.
+    """
+    nodata = meta.nodata
+    if nodata is not None and not np.isfinite(nodata):
+        nodata = None
+    return {"driver": meta.driver, "dtype": meta.dtype, "shape": list(meta.shape),
+            "band": meta.band, "bands": meta.count,
+            "crs": meta.crs, "transform": (None if meta.transform is None
+                                           else list(meta.transform)),
+            "nodata": nodata}
 
 
 def _quality_from_args(args, phase, method, backend):
@@ -446,12 +552,27 @@ def run(args):
         raise SystemExit("error: unknown method %r (choose from: %s)"
                          % (args.method, ", ".join(known)))
 
-    phase = _load(args.input, shape=args.shape, dtype=args.dtype,
-                  order=args.order, npz_key=args.npz_key, what="input",
-                  scale=args.scale, offset=args.offset)
+    if args.max_iter < 1:
+        raise SystemExit("error: --max-iter must be at least 1")
+
+    phase, meta = _load(args.input, shape=args.shape, dtype=args.dtype,
+                        order=args.order, npz_key=args.npz_key, what="input",
+                        scale=args.scale, offset=args.offset, band=args.band)
+    input_mask = None
     if not np.all(np.isfinite(phase)):
-        raise SystemExit("error: the input phase contains NaN or infinity; "
-                         "unwrapping needs a fully defined image")
+        if meta is None:
+            raise SystemExit("error: the input phase contains NaN or infinity; "
+                             "unwrapping needs a fully defined image")
+        # A georeferenced raster carries its own nodata mask, so invalid pixels
+        # are a footprint to exclude rather than an error to report.
+        input_mask = np.isfinite(phase)
+        if not input_mask.any():
+            raise SystemExit("error: every pixel of %s is nodata, so there is "
+                             "nothing to unwrap" % args.input)
+        if not args.quiet:
+            log("note     %d nodata pixel(s) of %s excluded from unwrapping"
+                % (int(input_mask.size - input_mask.sum()), args.input))
+        phase = np.where(input_mask, phase, 0.0)
 
     mask = _load_mask(args)
     weight = _load_weight(args)
@@ -459,6 +580,8 @@ def run(args):
         if array is not None and array.shape != phase.shape:
             raise SystemExit("error: %s has shape %s but the input has shape %s"
                              % (name, array.shape, phase.shape))
+    if input_mask is not None:
+        mask = input_mask if mask is None else (mask & input_mask)
 
     backend = _resolve_backend(args.backend, args.method)
     if not args.quiet:
@@ -468,6 +591,12 @@ def run(args):
 
     started = time.perf_counter()
     result, detail = _run_method(args, phase, backend, mask, weight)
+    if mask is not None:
+        # Not every algorithm blanks out the pixels it was told to ignore, but
+        # the CLI promises one convention, and a raster output needs it to mark
+        # the same footprint as the input.
+        result = np.asarray(result, dtype=np.float64)
+        result[~mask] = np.nan
     if args.center == "circular":
         result = center_circular(result, phase)
     seconds = time.perf_counter() - started
@@ -475,9 +604,9 @@ def run(args):
 
     if args.output is not None:
         _save(args.output, result,
-              shape=args.shape, dtype=args.out_dtype or args.dtype,
+              shape=args.shape, dtype=_output_dtype(args),
               order=args.order, npz_key=args.npz_key,
-              invalid_fill=args.invalid_fill)
+              invalid_fill=args.invalid_fill, like=meta)
 
     if not args.quiet:
         log("elapsed  %.3f s" % seconds)
@@ -488,6 +617,8 @@ def run(args):
         summary = {"method": args.method, "backend": backend,
                    "center": args.center, "shape": list(result.shape),
                    "seconds": seconds, "input": args.input, "output": args.output}
+        if meta is not None:
+            summary["raster"] = _raster_summary(meta)
         summary.update(detail)
         print(json.dumps(summary, indent=2, sort_keys=True))
     return 0

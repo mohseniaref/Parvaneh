@@ -29,6 +29,7 @@ parvaneh = "parvaneh.cli:main"
 
 [project.optional-dependencies]
 numba = ["numba>=0.55"]
+geo = ["rasterio>=1.2"]
 test = ["pytest>=7"]
 
 [tool.pytest.ini_options]

@@ -42,6 +42,8 @@ not distribute the book, its original source code, or its supplied datasets.
 
 - Weighted and unweighted least-squares unwrapping
 - A `parvaneh` command line with method selection and machine-readable reports
+- Direct reading and writing of GDAL rasters — GeoTIFF, COG, ENVI — when a GDAL
+  binding is installed
 - NumPy/SciPy, explicit BLAS, Numba, optional Cython, and optional CuPy backends
 - Quality-guided path following
 - Goldstein branch cuts and residue detection
@@ -62,6 +64,17 @@ python -m pip install -e '.[test,numba]'
 CuPy is optional and must match the CUDA runtime installed on the machine. The
 package reports CuPy as available only when CuPy and a working CUDA device are
 both present.
+
+GeoTIFF and other GDAL rasters need an optional binding, either
+[`rasterio`](https://rasterio.readthedocs.io/) or
+[`GDAL`](https://gdal.org/) itself:
+
+```bash
+python -m pip install -e '.[test,numba,geo]'
+```
+
+Everything else works without it; only raster input and output print an install
+hint when neither binding is present.
 
 ## Quick example
 
@@ -112,12 +125,20 @@ parvaneh wrapped.npy -o unwrapped.npy --method ls \
     --weight quality.npy --backend numba --workers -1
 ```
 
-Input and output are `.npy` or `.npz` files, or headerless raw rasters described
-by `--shape`, `--dtype`, `--order`, `--scale`, and `--offset`. The command line
-also handles masks, weights, per-method tuning, backend selection, and a
-machine-readable `--info` summary.
+If the package is not installed yet, the repository root holds a launcher that
+does the same thing with `src/` already on the import path:
 
-See [`docs/cli.md`](docs/cli.md) for the complete option reference and
+```bash
+python unwrap.py unwrap wrapped.tif -o unwrapped.tif --method flynn
+```
+
+Input and output are `.npy` or `.npz` files, GeoTIFF and similar GDAL rasters, or
+headerless raw rasters described by `--shape`, `--dtype`, `--order`, `--scale`,
+and `--offset`. The command line also handles masks, weights, per-method tuning,
+backend selection, and a machine-readable `--info` summary.
+
+See [`docs/cli.md`](docs/cli.md) for the complete option reference,
+[`docs/raster_io.md`](docs/raster_io.md) for the raster workflow, and
 [`docs/algorithms.md`](docs/algorithms.md) for what each method does.
 
 ## Validation
@@ -144,6 +165,7 @@ status of each algorithm.
 | [`docs/validation.md`](docs/validation.md) | how correctness is tested and benchmarked |
 | [`docs/performance.md`](docs/performance.md) | measured timings and scaling |
 | [`docs/binary_formats.md`](docs/binary_formats.md) | raw raster conventions and I/O |
+| [`docs/raster_io.md`](docs/raster_io.md) | reading and writing GeoTIFF and other GDAL rasters |
 | [`docs/porting_status.md`](docs/porting_status.md) | per-algorithm porting and validation status |
 | [`docs/phase_unwrapping_history_and_theory.md`](docs/phase_unwrapping_history_and_theory.md) | historical and theoretical background |
 | [`docs/repository_scope.md`](docs/repository_scope.md) | what the repository contains and what the license covers |

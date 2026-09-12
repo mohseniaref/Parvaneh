@@ -44,5 +44,7 @@ write_raw_raster("result.f32", unwrapped_phase, dtype="<f4")
 
 For self-describing research products, prefer formats such as GeoTIFF, NetCDF,
 HDF5, or NumPy `.npy` and preserve coordinate reference, geotransform, nodata,
-units, and processing metadata alongside the phase array.
+units, and processing metadata alongside the phase array. Parvaneh reads and
+writes GDAL rasters directly when a GDAL binding is installed; the details,
+including no-data handling, are in [Reading and writing GDAL rasters](raster_io.md).
 

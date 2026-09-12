@@ -42,7 +42,8 @@ must pass on a clean machine with no Cython build step.
 | [`tests/test_savage.py`](../tests/test_savage.py) | the Savage–Burford interseismic model | far-field limits $\pm V/2$, vanishing velocity on the fault trace, antisymmetry, monotone growth away from the fault, strike dependence, velocity × interval = displacement |
 | [`tests/test_noise.py`](../tests/test_noise.py) | the phase-noise model | the simulated histogram matches a closed-form single-look phase density bin by bin, plus independent moment checks |
 | [`tests/test_coherence.py`](../tests/test_coherence.py) | coherence-map generators | range $[0,1]$, multiplicative combining rule, windowed shape behaviour, seeded reproducibility |
-| [`tests/test_cli.py`](../tests/test_cli.py) | the `parvaneh` command line | exit status 1 and no traceback on every expected failure, stdout reserved for what was asked for, input and output guards, agreement between `--backend` and `--quality`, the JSON report, the offset convention |
+| [`tests/test_cli.py`](../tests/test_cli.py) | the `parvaneh` command line | exit status 1 and no traceback on every expected failure, stdout reserved for what was asked for, input and output guards, agreement between `--backend` and `--quality`, the JSON report, the offset convention, routing of raster inputs and outputs |
+| [`tests/test_raster.py`](../tests/test_raster.py) | GDAL raster input and output | round-tripping a GeoTIFF preserves geotransform and coordinate reference, no-data becomes `NaN` on read and is written back on write, band and dtype selection, refused output drivers, and an actionable error when no GDAL binding is installed |
 
 Three habits run through all of them:
 

@@ -101,7 +101,11 @@ def _unwrap_cpu(phase, weight, backend, max_iter, tol, workers):
     elif backend != "numpy":
         raise ValueError(f"unknown CPU backend: {backend}")
     previous, direction, converged = None, None, False
+    # ``relative`` and ``iterations`` are reported even when the loop stops for
+    # a reason other than convergence, so they are defined before it starts.
+    relative, iterations = float("inf"), 0
     for iteration in range(1, max_iter + 1):
+        iterations = iteration
         z = idctn(dctn(residual, workers=workers) / scale, workers=workers)
         rz = dot(residual, z)
         direction = z.copy() if previous is None else z + (rz / previous) * direction
@@ -117,17 +121,32 @@ def _unwrap_cpu(phase, weight, backend, max_iter, tol, workers):
             converged = True
             break
         previous = rz
-    return phi, Info(backend, iteration, relative, converged)
+    return phi, Info(backend, iterations, relative, converged)
 
 
 def unwrap(phase, weight=None, *, backend="numpy", max_iter=100, tol=1e-8,
            workers=1, return_info=False):
     """Unwrap a 2-D wrapped phase image; the arbitrary output offset is zero mean.
 
+    ``phase`` must be finite.  A no-data or zero-weight pixel has no value to
+    unwrap, so replace such pixels with a finite placeholder (for example
+    ``np.where(valid, phase, 0.0)``) and pass ``weight`` to exclude them.
+
     For CPU backends, ``workers=-1`` lets SciPy use all available cores for the
     DCT preconditioner.  The default is one worker to avoid oversubscription in
     applications that already parallelize at a higher level.
     """
+    phase = np.asarray(phase, dtype=np.float64)
+    if phase.ndim != 2 or min(phase.shape) < 2:
+        raise ValueError("phase must be a 2-D array with both dimensions >= 2")
+    if not np.isfinite(phase).all():
+        raise ValueError(
+            "phase must be finite; a NaN or infinite pixel has no value to "
+            "unwrap. Replace invalid pixels with a finite placeholder and give "
+            "them zero weight, for example "
+            "unwrap(np.where(valid, phase, 0.0), valid.astype(float)).")
+    if max_iter < 1:
+        raise ValueError("max_iter must be at least 1")
     if backend == "cupy":
         from .cupy_backend import unwrap_cupy
         result, info = unwrap_cupy(phase, weight, max_iter, tol)

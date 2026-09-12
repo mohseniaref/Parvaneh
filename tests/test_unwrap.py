@@ -41,6 +41,55 @@ def test_bad_weight_rejected():
         unwrap(np.zeros((4, 4)), -np.ones((4, 4)))
 
 
+def test_nonfinite_phase_rejected():
+    """A no-data pixel has no value to unwrap, so it is refused, not guessed."""
+    nan_phase = np.zeros((5, 6))
+    nan_phase[2, 3] = np.nan
+    for bad in (nan_phase, np.full((5, 6), np.inf)):
+        with pytest.raises(ValueError, match="finite"):
+            unwrap(bad)
+
+
+def test_nonfinite_phase_rejected_even_with_weight():
+    """Zero weight does not rescue a NaN pixel: 0 * NaN is still NaN."""
+    truth, wrapped, _ = make_synthetic((16, 21), noise=0.01)
+    wrapped = np.array(wrapped)
+    wrapped[7, 9] = np.nan
+    valid = np.isfinite(wrapped)
+    with pytest.raises(ValueError, match="finite"):
+        unwrap(wrapped, valid.astype(float))
+
+
+def test_masked_least_squares_ignores_a_hole():
+    """The documented raster recipe: finite placeholder plus zero weight."""
+    truth, wrapped, _ = make_synthetic((28, 34), noise=0.005)
+    wrapped = np.array(wrapped)
+    hole = np.zeros(wrapped.shape, dtype=bool)
+    hole[10:14, 12:20] = True
+    wrapped[hole] = np.nan
+    valid = np.isfinite(wrapped)
+
+    result = unwrap(np.where(valid, wrapped, 0.0), valid.astype(float))
+    assert np.isfinite(result).all()
+    error = np.abs((result - result.mean()) - (truth - truth.mean()))
+    assert error[valid].max() < 0.05
+
+
+def test_max_iter_must_be_positive():
+    with pytest.raises(ValueError, match="max_iter"):
+        unwrap(np.zeros((4, 4)), max_iter=0)
+
+
+def test_exhausted_iterations_report_nonconvergence():
+    """Hitting the iteration cap still returns a result and a finite residual."""
+    _, wrapped, weight = make_synthetic((48, 64), noise=0.05)
+    result, info = unwrap(wrapped, weight, max_iter=1, return_info=True)
+    assert info.converged is False
+    assert info.iterations == 1
+    assert np.isfinite(info.relative_residual)
+    assert np.isfinite(result).all()
+
+
 def test_generic_raw_raster_round_trip(tmp_path):
     original = np.linspace(-np.pi, np.pi, 35).reshape(5, 7)
     path = write_raw_raster(tmp_path / "phase.f32", original, dtype="<f4")

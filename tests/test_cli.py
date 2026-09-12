@@ -21,6 +21,7 @@ from parvaneh import __version__, make_synthetic, wrap_phase
 from parvaneh.cli import main
 from parvaneh.cli.unwrap import (METHOD_BACKENDS, METHODS, build_parser,
                                  center_circular)
+from parvaneh.raster import raster_backend, read_raster
 
 METHOD_NAMES = [name for name, _ in METHODS]
 
@@ -189,6 +190,13 @@ def test_negative_weight_is_rejected(scene, tmp_path, capsys):
     assert "weight must be finite and nonnegative" in err
 
 
+def test_zero_max_iter_is_an_error(scene, capsys):
+    _, _, path = scene
+    status, _, err = run([str(path), "--max-iter", "0"], capsys)
+    assert status == 1
+    assert "--max-iter must be at least 1" in err
+
+
 def test_masked_pixels_stay_nan_in_the_output(tmp_path, capsys):
     """A non-zero mask entry means valid, so the rest of the image stays NaN."""
     phase = np.zeros((12, 12), dtype=np.float32)
@@ -228,6 +236,215 @@ def test_raw_output_refuses_non_finite_without_fill(tmp_path, capsys):
     assert status == 0
     written = np.fromfile(str(tmp_path / "out.raw"), dtype="<f4").reshape(12, 12)
     assert (written[:, :6] == -9999).all()
+
+
+# --------------------------------------------------------------------------
+# georeferenced rasters (GeoTIFF and other GDAL formats)
+#
+# These need a GDAL binding, so each test skips when neither rasterio nor
+# osgeo.gdal is installed.  That skip is the documented behaviour of the
+# package as well: without a binding the command line still handles .npy, .npz
+# and headerless rasters, and reports an install hint for everything else.
+# --------------------------------------------------------------------------
+
+#: A north-up 30 m grid, so a test can prove the geometry survives a round trip.
+GRID = (30.0, 0.0, 412345.0, 0.0, -30.0, 4645110.0)
+
+raster_only = pytest.mark.skipif(
+    raster_backend() is None,
+    reason="no GDAL binding: neither rasterio nor osgeo.gdal is installed")
+
+
+def write_tif(path, array, *, nodata=None, transform=GRID, bands=None):
+    """Write ``array`` (or a list of bands) as a GeoTIFF, backend directly.
+
+    ``write_raster`` only creates single-band files, so the multi-band fixture
+    has to be built here.
+    """
+    rasterio = pytest.importorskip("rasterio")
+    stack = np.asarray(array) if bands is None else np.stack(bands)
+    count = 1 if stack.ndim == 2 else stack.shape[0]
+    height, width = stack.shape[-2:]
+    with rasterio.open(str(path), "w", driver="GTiff", height=height,
+                       width=width, count=count, dtype=stack.dtype.name,
+                       nodata=nodata, transform=rasterio.Affine(*transform)) as dst:
+        dst.write(stack, 1) if count == 1 else dst.write(stack)
+    return path
+
+
+@raster_only
+def test_raster_input_and_output_round_trip(scene, tmp_path, capsys):
+    """A .tif in, a .tif out: same grid, same numbers as the .npy run."""
+    _, wrapped, _ = scene
+    source = write_tif(tmp_path / "wrapped.tif", wrapped.astype(np.float32))
+
+    status, out, err = run([str(source), "-o", str(tmp_path / "out.npy"), "-q"],
+                           capsys)
+    assert status == 0, err
+
+    status, _, err = run([str(source), "-o", str(tmp_path / "out.tif"), "-q"],
+                         capsys)
+    assert status == 0, err
+
+    values, meta = read_raster(tmp_path / "out.tif")
+    assert meta.driver == "GTiff"
+    assert meta.transform == GRID
+    assert values.shape == wrapped.shape
+    assert np.allclose(values, np.load(str(tmp_path / "out.npy")), atol=1e-5)
+
+
+@raster_only
+def test_raster_nodata_pixels_are_excluded(tmp_path, capsys):
+    """Nodata is a validity declaration: those pixels are not unwrapped."""
+    phase = np.zeros((16, 20), dtype=np.float32)
+    phase[2:6, 14:19] = np.nan
+    source = write_tif(tmp_path / "hole.tif", phase, nodata=np.nan)
+
+    # no -q: the note that reports how many pixels were dropped is progress
+    # chatter, and progress chatter is exactly what -q silences.
+    status, _, err = run([str(source), "-o", str(tmp_path / "out.tif")], capsys)
+    assert status == 0, err
+    assert "20 nodata pixel(s)" in err
+
+    values, meta = read_raster(tmp_path / "out.tif")
+    assert np.isnan(values[2:6, 14:19]).all()
+    assert np.isfinite(values).sum() == phase.size - 20
+    assert meta.nodata is not None
+
+
+@raster_only
+def test_band_selects_which_image_is_unwrapped(scene, tmp_path, capsys):
+    """A phase band stored next to other bands can be picked with --band."""
+    _, wrapped, path = scene
+    source = write_tif(tmp_path / "stack.tif", None,
+                       bands=[(wrapped * 0.5).astype(np.float32), wrapped])
+
+    results = {}
+    for band in ("1", "2"):
+        target = tmp_path / ("band%s.npy" % band)
+        status, _, err = run([str(source), "--band", band,
+                              "-o", str(target), "-q"], capsys)
+        assert status == 0, err
+        results[band] = np.load(str(target))
+
+    # band 2 must unwrap to exactly what the .npy route produces from the same
+    # array, and it must not be the answer for band 1.
+    status, _, err = run([str(path), "-o", str(tmp_path / "direct.npy"), "-q"],
+                         capsys)
+    assert status == 0, err
+    assert np.allclose(results["2"], np.load(str(tmp_path / "direct.npy")))
+    assert not np.allclose(results["1"], results["2"])
+
+    status, _, err = run([str(source), "--band", "3", "-o",
+                          str(tmp_path / "oops.npy")], capsys)
+    assert status == 1
+    assert "band 3 does not exist" in err
+    assert "the file has 2 bands" in err
+
+
+@raster_only
+def test_scale_applies_to_raster_input(tmp_path, capsys):
+    """--scale multiplies phase read from a raster, before unwrapping."""
+    rows, cols = 20, 24
+    yy, xx = np.mgrid[0:rows, 0:cols]
+    smooth = (0.25 * xx + 0.15 * yy) / 4.0
+    source = write_tif(tmp_path / "smooth.tif",
+                       wrap_phase(smooth).astype(np.float32))
+
+    outputs = []
+    for factor in ("1", "2"):
+        target = tmp_path / ("scale%s.npy" % factor)
+        status, _, err = run([str(source), "--scale", factor, "-o", str(target),
+                              "-q"], capsys)
+        assert status == 0, err
+        outputs.append(np.load(str(target)))
+
+    assert np.allclose(outputs[1], 2.0 * outputs[0], atol=1e-3)
+
+
+@raster_only
+def test_integer_raster_keeps_its_dtype_and_sentinel(tmp_path, capsys):
+    """An int16 input with a -9999 sentinel can be unwrapped back to int16."""
+    values = np.arange(12 * 12, dtype="int16").reshape(12, 12)
+    values[0:3, 0:3] = -9999
+    source = write_tif(tmp_path / "int16.tif", values, nodata=-9999)
+
+    status, _, err = run([str(source), "--out-dtype", "int16",
+                          "--invalid-fill", "-9999",
+                          "-o", str(tmp_path / "out.tif"), "-q"], capsys)
+    assert status == 0, err
+
+    back, meta = read_raster(tmp_path / "out.tif", nodata_fill=None)
+    assert meta.dtype == "int16"
+    assert meta.nodata == -9999
+    assert (back[0:3, 0:3] == -9999).all()
+    assert meta.transform == GRID
+
+
+@raster_only
+def test_raster_mask_and_weight_files_are_accepted(scene, tmp_path, capsys):
+    """--mask and --weight take rasters as well as .npy arrays."""
+    _, wrapped, _ = scene
+    source = write_tif(tmp_path / "wrapped.tif", wrapped.astype(np.float32))
+    mask = np.ones(wrapped.shape, dtype=np.float32)
+    mask[:, :8] = 0.0
+    write_tif(tmp_path / "mask.tif", mask)
+    write_tif(tmp_path / "weight.tif", mask)
+
+    status, _, err = run([str(source), "--method", "quality-guided",
+                          "--mask", str(tmp_path / "mask.tif"),
+                          "--weight", str(tmp_path / "weight.tif"),
+                          "-o", str(tmp_path / "out.tif"), "-q"], capsys)
+    assert status == 0, err
+
+    values, _ = read_raster(tmp_path / "out.tif")
+    assert np.isnan(values[:, :8]).all()
+    assert np.isfinite(values[:, 8:]).all()
+
+
+@raster_only
+def test_unwritable_raster_format_is_refused(tmp_path, capsys):
+    """Only the formats this package can create are allowed as output."""
+    phase = np.zeros((8, 8), dtype=np.float32)
+    source = write_tif(tmp_path / "wrapped.tif", phase)
+
+    status, _, err = run([str(source), "-o", str(tmp_path / "out.vrt")], capsys)
+    assert status == 1
+    assert "writing '.vrt' files is not supported" in err
+
+
+@raster_only
+def test_info_reports_the_raster_metadata(scene, tmp_path, capsys):
+    _, wrapped, _ = scene
+    source = write_tif(tmp_path / "wrapped.tif", wrapped.astype(np.float32))
+
+    status, out, err = run([str(source), "--info", "-o",
+                            str(tmp_path / "out.tif"), "-q"], capsys)
+    assert status == 0, err
+    report = json.loads(out)["raster"]
+    assert report["driver"] == "GTiff"
+    assert report["transform"] == list(GRID)
+    assert report["band"] == 1
+    assert report["shape"] == list(wrapped.shape)
+
+
+def test_without_a_binding_a_raster_input_explains_how_to_install(
+        monkeypatch, tmp_path, capsys):
+    """The no-GDAL path is supported, so it must fail with a helpful message."""
+    import parvaneh.raster as raster
+
+    monkeypatch.setattr(raster, "_import_rasterio", lambda: None)
+    monkeypatch.setattr(raster, "_import_gdal", lambda: None)
+    source = tmp_path / "wrapped.tif"
+    source.write_bytes(b"\0" * 8)
+
+    status, out, err = run([str(source), "-o", str(tmp_path / "out.tif")], capsys)
+
+    assert status == 1
+    assert out == ""
+    assert "neither rasterio nor osgeo.gdal is installed" in err
+    assert "pip install 'parvaneh[geo]'" in err
+    assert "python3-gdal" in err
 
 
 # --------------------------------------------------------------------------
