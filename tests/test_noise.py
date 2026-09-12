@@ -75,7 +75,10 @@ def test_single_look_density_is_a_normalised_probability_density():
     for coherence in (0.0, 0.2, 0.5, 0.8, 0.95):
         density = np.asarray(single_look_phase_pdf(psi, coherence))
         assert density.min() >= 0.0
-        assert np.trapz(density, psi) == pytest.approx(1.0, abs=1e-6)
+        # Trapezoidal rule, spelled out: NumPy 2 renamed ``np.trapz`` to
+        # ``np.trapezoid`` and then removed the old name.
+        trapezoid = 0.5 * (density[1:] + density[:-1]) * np.diff(psi)
+        assert trapezoid.sum() == pytest.approx(1.0, abs=1e-6)
 
 
 def test_single_look_density_is_uniform_when_coherence_is_zero():
@@ -159,6 +162,8 @@ def test_perfect_coherence_returns_exactly_zero_phase_error():
     rng = np.random.default_rng(5)
     assert float(phase_noise(1.0, rng=rng)) == 0.0
     assert not np.any(phase_noise(np.ones((32, 32)), rng=rng))
+    # Averaging looks cannot introduce noise where there was none to average.
+    assert not np.any(phase_noise(np.ones((8, 8)), looks=4, rng=rng))
 
 
 def test_no_data_pixels_stay_no_data():

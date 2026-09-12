@@ -56,6 +56,18 @@ phase error for that :math:`(\\gamma, L)` pair.  That is exactly what
 :func:`phase_noise` does, and it is a simulation of the physics rather than an
 approximation of its statistics.
 
+One limit is worth stating separately, because it is easy to get wrong in
+code.  At :math:`\\gamma = 1` the two reflectivities are equal,
+:math:`z_2 = z_1`, so the interferogram :math:`z_1 z_2^{*} = |z_1|^{2}`
+is real and positive and its phase error is *exactly* zero: a perfectly
+coherent pixel must come back untouched.  That identity is exact in algebra
+but not in floating-point arithmetic, where rounding in the complex product
+leaves an imaginary part of order :math:`10^{-17}` in place of zero.
+NumPy 2 rounds complex products by a different route than NumPy 1, so the
+residual grew from a value that rounding always hid into one that a test
+can see.  :func:`phase_noise` therefore imposes the limit explicitly
+rather than trusting the product, and the test suite pins it down.
+
 The exact single-look distribution
 ----------------------------------
 
@@ -252,7 +264,9 @@ def phase_noise(coherence, looks=DEFAULT_LOOKS, rng=None):
 
     * :math:`\\gamma = 1` gives exactly ``0`` for every pixel.  With perfect
       correlation the two reflectivities are equal, so the interferogram is
-      real and positive.
+      real and positive.  This limit is imposed explicitly, because rounding
+      in the complex product would otherwise return phases of order
+      :math:`10^{-17}` instead of zero.
     * :math:`\\gamma = 0` gives a phase that is uniform on ``(-pi, pi]``.
     * Large ``looks`` makes the phase error shrink as :math:`1/\\sqrt{L}`.
 
@@ -290,6 +304,15 @@ def phase_noise(coherence, looks=DEFAULT_LOOKS, rng=None):
         accumulator = product if accumulator is None else accumulator + product
 
     psi = np.angle(accumulator)
+    # At perfect coherence the interferogram is ``z z* = |z|**2``: real,
+    # positive, and therefore of phase exactly zero.  Floating-point complex
+    # multiplication does not preserve that identity -- it returns an
+    # imaginary part of order 1e-17 instead of zero, and NumPy 2 rounds the
+    # product by a different route than NumPy 1 did -- so the mathematically
+    # exact limit is imposed here rather than left to the arithmetic.
+    perfect = gamma == 1.0
+    if np.any(perfect):
+        psi = np.where(perfect, 0.0, psi)
     # A nan coherence must not turn into a random phase.
     invalid = ~np.isfinite(gamma)
     if np.any(invalid):
