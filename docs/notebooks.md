@@ -93,14 +93,24 @@ example to test a new unwrapping method or to calibrate an error budget.
 
 ## House style
 
-The notebooks are committed **without stored outputs** and with execution counts
-cleared. A reader runs them, or does not; either way the diff of a change stays
-readable and no stale figure or stale number is ever published. If you edit a
-notebook, run it, then clear the outputs before committing:
+The notebooks are committed **with their outputs and their execution counts**.
+GitHub then renders every figure straight in the browser and a reader can check
+a number without installing anything, which is most of the point of a teaching
+notebook. Every stored output is therefore the result of a real end-to-end run;
+never type into an output cell by hand.
+
+When you change a notebook, run it end to end and commit the fresh outputs:
 
 ```bash
-jupyter nbconvert --clear-output --inplace notebooks/*.ipynb
+jupyter nbconvert --to notebook --execute --inplace notebooks/*.ipynb
 ```
+
+Commit only a run that finished without an error — a stored traceback is worse
+than no output at all. The execution counts should read `1`, `2`, `3`, ... in
+cell order, because a run that was restarted half way through leaves counts
+like `10`, `11`, `12` that tell a reader nothing. Outputs are part of the
+repository history, so keep figures and printed tables to what the surrounding
+text actually discusses.
 
 Please keep the dependency set as it is. A notebook that only runs on the
 author's machine is not reproducible.

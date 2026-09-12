@@ -108,17 +108,18 @@ hardware*, not as a promise.
 
 The notebooks are validated the same way as any other code:
 
-- they are stored **without outputs and execution counts**, so nothing can rot
-  silently in a committed figure;
+- they are stored **with the outputs of the last successful run**, so a reader
+  sees exactly what the committed code produced and any change to a figure or a
+  printed number shows up in the diff instead of rotting silently;
 - each starts from a seeded generator, so a run is repeatable;
-- they are executed end to end (`MPLBACKEND=Agg`) from the repository root, with
-  a driver that runs the code cells in one namespace when `jupyter` is not
-  installed, so a rename or a moved import cannot survive unnoticed.
+- they are executed end to end from the repository root
+  (`jupyter nbconvert --to notebook --execute`), so a rename or a moved import
+  cannot survive unnoticed.
 
-If you change a notebook, run it, then clear the outputs:
+If you change a notebook, run it end to end and commit the fresh outputs:
 
 ```bash
-jupyter nbconvert --clear-output --inplace notebooks/*.ipynb
+jupyter nbconvert --to notebook --execute --inplace notebooks/*.ipynb
 ```
 
 See [`notebooks.md`](notebooks.md) for what each notebook demonstrates.

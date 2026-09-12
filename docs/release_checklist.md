@@ -4,7 +4,9 @@
    `CITATION.cff` and `.zenodo.json`.
 2. Run `pytest -q` from a fresh environment with no external reference files.
 3. Execute the synthetic notebook and both benchmark programs.
-4. Confirm every committed notebook has zero execution outputs before release.
+4. Confirm every committed notebook holds the outputs of its last successful
+   run: execution counts `1`, `2`, `3`, ... in cell order, and no stored
+   traceback.
 5. Build the allowlisted archive with `python tools/build_zenodo_archive.py`.
 6. Inspect `ARCHIVE_MANIFEST.json` and verify that the archive contains only
    package code, tests, synthetic examples, and original documentation.
