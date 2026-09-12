@@ -154,10 +154,12 @@ def _branch_cuts(charges, border, max_cut_length):
 def _unwrap_around_cuts(phase, cuts, blocked):
     """Integrate the wrapped field away from the cuts.
 
-    ``blocked`` marks the pixels that carry no usable phase, so they are never
-    entered and keep their initial value of zero.  Cut pixels are likewise left
-    at zero.  Every other pixel, including a valid pixel that merely touches a
-    masked one, is integrated normally.
+    ``blocked`` marks the pixels that carry no usable phase.  They are never
+    entered, so they keep their initial value of zero.  Cut pixels are skipped
+    during the integration and filled afterwards from an adjacent unwrapped
+    pixel; a cut pixel with no such neighbour stays zero.  Every other pixel,
+    including a valid pixel that merely touches a masked one, is integrated
+    normally.
     """
     rows, cols = phase.shape
     output = np.zeros(phase.shape, dtype=np.float32)
@@ -215,9 +217,10 @@ def goldstein_unwrap(phase, mask=None, *, max_cut_length=None,
 
     The output uses radians.  ``mask`` is true for valid pixels.  The optional
     cut map is a boolean pixel mask suitable for plotting and diagnostics.
-    Pixels outside ``mask`` and pixels on a cut keep the value zero, because
-    no phase can be assigned there; every other valid pixel is unwrapped,
-    including the ones that only touch the mask.
+    Pixels outside ``mask`` keep the value zero.  Pixels on a cut are filled
+    from an adjacent unwrapped pixel where one exists, and stay zero
+    otherwise; every other valid pixel is unwrapped, including the ones that
+    only touch the mask.
     """
     phase = np.asarray(phase, dtype=np.float64)
     if phase.ndim != 2 or min(phase.shape) < 2 or not np.isfinite(phase).all():
@@ -317,8 +320,9 @@ def _thin_mask(cuts, charges, border):
 def mask_cut_unwrap(phase, mask=None, *, return_cuts=False):
     """Quality-guided mask-cut unwrapping using minimum-gradient paths.
 
-    ``mask`` is true for valid pixels; pixels outside it and pixels on a cut
-    keep the value zero.
+    ``mask`` is true for valid pixels.  Pixels outside it keep the value zero;
+    pixels on a cut are filled from an adjacent unwrapped pixel where one
+    exists, and stay zero otherwise.
     """
     phase = np.asarray(phase, dtype=np.float64)
     if phase.ndim != 2 or min(phase.shape) < 2 or not np.isfinite(phase).all():
