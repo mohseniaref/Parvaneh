@@ -66,7 +66,7 @@ clockwise from North, so due East is :math:`90^\\circ`.
 
 Worked example
 --------------
->>> from accelerated_unwrap.synthetic.geometry import (los_unit_vector,
+>>> from parvaneh.synthetic.geometry import (los_unit_vector,
 ...                                                    project_to_los,
 ...                                                    displacement_to_phase)
 >>> l_e, l_n, l_u = los_unit_vector(incidence_deg=30.0, look_azimuth_deg=270.0)

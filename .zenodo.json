@@ -1,7 +1,7 @@
 {
-  "title": "Parvaneh: Accelerated two-dimensional phase unwrapping",
+  "title": "Parvaneh: Accelerated phase unwrapping",
   "upload_type": "software",
-  "description": "Independent Python implementations, synthetic correctness tests, generic raster I/O, and reproducible benchmarks for two-dimensional phase unwrapping.",
+  "description": "Independent Python implementations, synthetic correctness tests, generic raster I/O, and reproducible benchmarks for phase unwrapping.",
   "creators": [
     {
       "name": "Mohseni Aref, Mohammad",

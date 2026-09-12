@@ -7,7 +7,7 @@ import io
 import pstats
 from pathlib import Path
 
-from accelerated_unwrap import make_synthetic, unwrap
+from parvaneh import make_synthetic, unwrap
 
 
 def main():

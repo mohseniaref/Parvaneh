@@ -69,7 +69,7 @@ Assumptions and limitations
 * The half-space is **homogeneous, isotropic and linearly elastic**.
 * The source is a point.  This fails close to the source when the source
   radius is comparable with its depth; use a finite source
-  (:mod:`accelerated_unwrap.synthetic.okada`) in that regime.
+  (:mod:`parvaneh.synthetic.okada`) in that regime.
 * **No topography**: the free surface is flat.  On a real volcano this is a
   significant simplification.
 * The model is *static*: no viscoelastic relaxation, no magma compressibility
@@ -159,7 +159,7 @@ def mogi_point_displacement(x, y, source_x, source_y, depth, delta_volume,
     """Displacement at ``(x, y)`` from a single Mogi source.
 
     This is the scalar workhorse; :func:`mogi_displacement` is a thin wrapper
-    over it that accepts a :class:`~accelerated_unwrap.synthetic.grid.Grid`.
+    over it that accepts a :class:`~parvaneh.synthetic.grid.Grid`.
 
     Parameters
     ----------
@@ -236,7 +236,7 @@ def mogi_displacement(grid, source_x, source_y, depth, delta_volume,
 
     Examples
     --------
-    >>> from accelerated_unwrap.synthetic.grid import Grid
+    >>> from parvaneh.synthetic.grid import Grid
     >>> grid = Grid.centered(nx=3, ny=3, spacing=1000.0)
     >>> u_e, u_n, u_u = mogi_displacement(grid, 0.0, 0.0, 2000.0, 1.0e7)
     >>> round(float(u_u[1, 1]), 6)          # directly above the source
@@ -283,7 +283,7 @@ def mogi_displacement_multi(grid, sources, poisson_ratio=0.25):
     --------
     Multiple sources are additive, so a pair of identical sources cancels:
 
-    >>> from accelerated_unwrap.synthetic.grid import Grid
+    >>> from parvaneh.synthetic.grid import Grid
     >>> grid = Grid.centered(nx=4, ny=4, spacing=500.0)
     >>> src = dict(source_x=0.0, source_y=0.0, depth=3000.0,
     ...            delta_volume=1.0e7)
@@ -362,7 +362,7 @@ def random_mogi_source(grid, style="inflation", rng=None):
 
     Examples
     --------
-    >>> from accelerated_unwrap.synthetic.grid import Grid
+    >>> from parvaneh.synthetic.grid import Grid
     >>> grid = Grid.centered(nx=64, ny=64, spacing=100.0)
     >>> rng = np.random.default_rng(20240101)
     >>> src = random_mogi_source(grid, "centred", rng=rng)

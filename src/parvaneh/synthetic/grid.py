@@ -19,7 +19,7 @@ mixed together in practice:
    you count edges.
 
 This module fixes one choice for each question and states it explicitly.  All
-other modules in :mod:`accelerated_unwrap.synthetic` inherit that choice, so if
+other modules in :mod:`parvaneh.synthetic` inherit that choice, so if
 you understand this file you understand the geometry of the whole package.
 
 The conventions
@@ -40,7 +40,7 @@ The conventions
 
 A worked example
 ----------------
->>> from accelerated_unwrap.synthetic.grid import Grid
+>>> from parvaneh.synthetic.grid import Grid
 >>> grid = Grid(nx=4, ny=3, spacing=30.0, x_min=0.0, y_max=0.0)
 >>> grid.x.tolist()               # west -> east
 [0.0, 30.0, 60.0, 90.0]

@@ -28,7 +28,7 @@ Coherence matters twice in a phase-unwrapping benchmark:
 
 1. It controls **how much phase noise the interferogram contains**.  The
    relation between coherence and phase scatter is a hard, well-tested
-   statistical law, and :mod:`accelerated_unwrap.synthetic.noise` uses it
+   statistical law, and :mod:`parvaneh.synthetic.noise` uses it
    rather than inventing an arbitrary Gaussian.  A realistic dataset therefore
    needs a *plausible coherence map* first.
 2. It is the **ground truth for every quality measure** an unwrapper produces.
@@ -71,7 +71,7 @@ Conventions
 * Coherence is a dimensionless real number in ``[0, 1]``.
 * Arrays have shape ``(grid.ny, grid.nx)`` in the package-wide ENU raster
   layout: row 0 is the northernmost row, column 0 the westernmost column.  See
-  :mod:`accelerated_unwrap.synthetic.grid`.
+  :mod:`parvaneh.synthetic.grid`.
 * Distances and lengths are in metres, angles in degrees and carry a ``_deg``
   suffix.
 * A pixel whose coherence is ``nan`` is meant to be treated as *invalid*, not
@@ -254,7 +254,7 @@ def uniform_coherence(grid, coherence=0.8):
 
     Examples
     --------
-    >>> from accelerated_unwrap.synthetic.grid import Grid
+    >>> from parvaneh.synthetic.grid import Grid
     >>> grid = Grid(nx=4, ny=3, spacing=10.0)
     >>> gamma = uniform_coherence(grid, "very_high")
     >>> gamma.shape, float(gamma[0, 0]), int(gamma.dtype.itemsize)
@@ -303,7 +303,7 @@ def coherence_gradient(grid, low=0.2, high=0.95, azimuth_deg=0.0):
 
     Examples
     --------
-    >>> from accelerated_unwrap.synthetic.grid import Grid
+    >>> from parvaneh.synthetic.grid import Grid
     >>> grid = Grid.centered(nx=5, ny=5, spacing=100.0)
     >>> gamma = coherence_gradient(grid, low=0.2, high=1.0)
     >>> bool(np.all(gamma >= 0.2 - 1e-12) and np.all(gamma <= 1.0 + 1e-12))
@@ -382,7 +382,7 @@ def gaussian_coherence_patch(grid, center_x, center_y, sigma, depth,
 
     Examples
     --------
-    >>> from accelerated_unwrap.synthetic.grid import Grid
+    >>> from parvaneh.synthetic.grid import Grid
     >>> grid = Grid.centered(nx=21, ny=21, spacing=100.0)
     >>> gamma = gaussian_coherence_patch(grid, 0.0, 0.0, 200.0, 0.6)
     >>> round(float(gamma[10, 10]), 6)         # the centre of the patch
@@ -441,7 +441,7 @@ def decorrelation_stripe(grid, width, coherence=0.2, azimuth_deg=0.0,
 
     Examples
     --------
-    >>> from accelerated_unwrap.synthetic.grid import Grid
+    >>> from parvaneh.synthetic.grid import Grid
     >>> grid = Grid(nx=11, ny=11, spacing=100.0, x_min=-500.0, y_max=500.0)
     >>> gamma = decorrelation_stripe(grid, width=300.0, coherence=0.3)
     >>> round(float(gamma[5, 5]), 6)           # on the centre line x = 0
@@ -503,7 +503,7 @@ def fault_zone_coherence(grid, trace_x, trace_y, width, coherence=0.2,
 
     Examples
     --------
-    >>> from accelerated_unwrap.synthetic.grid import Grid
+    >>> from parvaneh.synthetic.grid import Grid
     >>> grid = Grid(nx=11, ny=11, spacing=100.0, x_min=-500.0, y_max=500.0)
     >>> gamma = fault_zone_coherence(grid, [0.0, 0.0], [-400.0, 400.0],
     ...                              width=200.0, coherence=0.25)
@@ -564,7 +564,7 @@ def random_coherence(grid, mean=0.75, sigma=0.12, correlation_length=500.0,
 
     Examples
     --------
-    >>> from accelerated_unwrap.synthetic.grid import Grid
+    >>> from parvaneh.synthetic.grid import Grid
     >>> grid = Grid(nx=64, ny=64, spacing=100.0)
     >>> rng = np.random.default_rng(20240101)
     >>> gamma = random_coherence(grid, rng=rng)
@@ -629,7 +629,7 @@ def circular_no_data_mask(grid, center_x, center_y, radius):
 
     Examples
     --------
-    >>> from accelerated_unwrap.synthetic.grid import Grid
+    >>> from parvaneh.synthetic.grid import Grid
     >>> grid = Grid.centered(nx=21, ny=21, spacing=100.0)
     >>> mask = circular_no_data_mask(grid, 0.0, 0.0, 250.0)
     >>> bool(mask[10, 10])

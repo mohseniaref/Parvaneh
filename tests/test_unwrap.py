@@ -1,13 +1,11 @@
 import numpy as np
 import pytest
-from accelerated_unwrap import (available_backends, discontinuity_map,
-                                flynn_unwrap, goldstein_unwrap,
-                                make_synthetic,
-                                mask_cut_unwrap,
-                                phase_residues,
-                                quality_guided_unwrap, read_raw_raster,
-                                rmse_aligned, surface_difference, unwrap, unwrap_lp,
-                                wrapped_gradients, write_raw_raster)
+from parvaneh import (available_backends, discontinuity_map, flynn_unwrap,
+                      goldstein_unwrap, make_synthetic, mask_cut_unwrap,
+                      max_gradient_quality, phase_residues,
+                      quality_guided_unwrap, read_raw_raster, rmse_aligned,
+                      surface_difference, unwrap, unwrap_lp,
+                      wrapped_gradients, write_raw_raster)
 
 
 CPU_BACKENDS = [name for name, usable in available_backends().items()
@@ -140,3 +138,44 @@ def test_flynn_result_is_phase_congruent():
     cycles -= cycles.flat[0]
     assert np.max(np.abs(cycles - np.rint(cycles))) < 2e-6
     assert iterations > 0
+
+
+def test_flynn_with_mask_and_quality_matches_reference_cycles():
+    """Flynn with a mask is the case that takes the non-uniform cost path.
+
+    An unmasked scene gives every edge the same cost, so the masks below are
+    what force the algorithm to make real choices.  The number of whole cycles
+    added to each pixel is pinned exactly: it is the observable output of the
+    search, and it is identical to the reference implementation.
+    """
+    _, wrapped, _ = make_synthetic((11, 13), noise=0.05, seed=3)
+    mask = np.zeros(wrapped.shape, dtype=bool)
+    mask[3:6, 2:5] = True
+    mask[8, 9] = True
+    quality = max_gradient_quality(wrapped, window=1)
+
+    result, iterations = flynn_unwrap(wrapped, quality=quality, mask=mask,
+                                      return_iterations=True)
+
+    assert result.dtype == np.float64
+    assert np.isfinite(result).all()
+    cycles = (result - wrapped) / (2 * np.pi)
+    cycles -= cycles.flat[0]
+    assert np.max(np.abs(cycles - np.rint(cycles))) < 2e-6
+    cycles = np.rint(cycles).astype(int)
+
+    assert iterations == 5
+    assert np.count_nonzero(cycles) == 7
+    assert cycles.tolist() == [
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, -1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ]

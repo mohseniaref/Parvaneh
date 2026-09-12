@@ -15,7 +15,7 @@ implementation's own output.
 import numpy as np
 import pytest
 
-from accelerated_unwrap.synthetic import (
+from parvaneh.synthetic import (
     SAVAGE_STYLES,
     Grid,
     random_savage_source,

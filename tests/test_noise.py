@@ -20,7 +20,7 @@ Three independent checks are made:
 import numpy as np
 import pytest
 
-from accelerated_unwrap.synthetic import (
+from parvaneh.synthetic import (
     DEFAULT_LOOKS,
     UNIFORM_PHASE_STD,
     add_phase_noise,

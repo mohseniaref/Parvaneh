@@ -11,7 +11,7 @@ reproducible for a fixed seed.
 import numpy as np
 import pytest
 
-from accelerated_unwrap.synthetic import (
+from parvaneh.synthetic import (
     COHERENCE_LEVELS,
     NO_DATA,
     Grid,

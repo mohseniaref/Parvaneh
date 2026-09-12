@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import argparse, time
-from accelerated_unwrap import available_backends, make_synthetic, rmse_aligned, unwrap
+from parvaneh import available_backends, make_synthetic, rmse_aligned, unwrap
 
 p = argparse.ArgumentParser(description="Benchmark accelerated 2-D weighted phase unwrapping")
 p.add_argument("--rows", type=int, default=256); p.add_argument("--cols", type=int, default=320)

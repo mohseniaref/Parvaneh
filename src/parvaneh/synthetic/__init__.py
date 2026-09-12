@@ -3,8 +3,8 @@
 This subpackage builds interferometric phase fields for which the *true*
 unwrapped phase is known analytically, so that a phase-unwrapping algorithm can
 be scored numerically instead of judged by eye.  It grew out of the single
-``accelerated_unwrap.synthetic`` module, which is preserved verbatim as
-:mod:`accelerated_unwrap.synthetic.legacy` so that existing notebooks,
+``parvaneh.synthetic`` module, which is preserved verbatim as
+:mod:`parvaneh.synthetic.legacy` so that existing notebooks,
 benchmarks and scripts keep working.
 
 Why bother
@@ -22,23 +22,23 @@ supposed to recover is therefore available to arbitrary precision.
 The construction is a pipeline, and each stage is kept separate so that it can
 be inspected and tested on its own:
 
-1. :mod:`~accelerated_unwrap.synthetic.grid` -- the sampling grid.
-2. :mod:`~accelerated_unwrap.synthetic.mogi`,
-   :mod:`~accelerated_unwrap.synthetic.okada`,
-   :mod:`~accelerated_unwrap.synthetic.savage` -- ground displacement in ENU
+1. :mod:`~parvaneh.synthetic.grid` -- the sampling grid.
+2. :mod:`~parvaneh.synthetic.mogi`,
+   :mod:`~parvaneh.synthetic.okada`,
+   :mod:`~parvaneh.synthetic.savage` -- ground displacement in ENU
    coordinates, with no notion of radar in them at all.
-3. :mod:`~accelerated_unwrap.synthetic.geometry` -- projection onto the
+3. :mod:`~parvaneh.synthetic.geometry` -- projection onto the
    satellite line of sight, and conversion from displacement to phase.
-4. :mod:`~accelerated_unwrap.synthetic.atmosphere`,
-   :mod:`~accelerated_unwrap.synthetic.noise`,
-   :mod:`~accelerated_unwrap.synthetic.coherence` -- the components that make
+4. :mod:`~parvaneh.synthetic.atmosphere`,
+   :mod:`~parvaneh.synthetic.noise`,
+   :mod:`~parvaneh.synthetic.coherence` -- the components that make
    the scene realistic.
-5. :mod:`~accelerated_unwrap.synthetic.wrapping`,
-   :mod:`~accelerated_unwrap.synthetic.residues` -- the wrapping that destroys
+5. :mod:`~parvaneh.synthetic.wrapping`,
+   :mod:`~parvaneh.synthetic.residues` -- the wrapping that destroys
    information, and the residues that quantify the damage.
-6. :mod:`~accelerated_unwrap.synthetic.masks`,
-   :mod:`~accelerated_unwrap.synthetic.scenarios`,
-   :mod:`~accelerated_unwrap.synthetic.dataset` -- assembling complete,
+6. :mod:`~parvaneh.synthetic.masks`,
+   :mod:`~parvaneh.synthetic.scenarios`,
+   :mod:`~parvaneh.synthetic.dataset` -- assembling complete,
    reproducible, self-describing benchmarks.
 
 Conventions that hold everywhere in this subpackage
@@ -66,7 +66,7 @@ Conventions that hold everywhere in this subpackage
 
    Two functions named ``wrap_phase`` exist for historical reasons.  The one
    exported here is the canonical complex-exponential version; the older
-   modulo version lives in :mod:`accelerated_unwrap.synthetic.legacy`.  They
+   modulo version lives in :mod:`parvaneh.synthetic.legacy`.  They
    agree everywhere except exactly at odd multiples of :math:`\\pi`, where the
    modulo form always returns ``-pi`` while the complex form returns ``-pi``
    for :math:`-\\pi` and a value one unit in the last place below ``+pi`` for

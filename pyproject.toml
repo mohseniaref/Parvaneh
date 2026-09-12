@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "wheel", "Cython>=0.29", "numpy>=1.21"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "accelerated-phase-unwrapping"
+name = "parvaneh"
 version = "0.1.0a1"
-description = "Reproducible accelerated algorithms for two-dimensional phase unwrapping"
+description = "Reproducible accelerated algorithms for phase unwrapping"
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.8"
@@ -24,9 +24,20 @@ dependencies = ["numpy>=1.21", "scipy>=1.7", "matplotlib>=3.4"]
 Homepage = "https://github.com/mohseniaref/Parvaneh"
 Repository = "https://github.com/mohseniaref/Parvaneh.git"
 
+[project.scripts]
+parvaneh = "parvaneh.cli:main"
+
 [project.optional-dependencies]
 numba = ["numba>=0.55"]
 test = ["pytest>=7"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# The import package lives under src/, so setuptools must look there for it and
+# install it at the top level (`parvaneh`, not `src.parvaneh`).
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

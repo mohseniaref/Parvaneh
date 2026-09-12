@@ -304,7 +304,7 @@ def savage_velocity(grid, strike_deg, locking_depth, slip_rate,
     A north-south fault striking ``0`` has "right of strike" to the east, so
     the eastern half of the map moves north and the western half moves south:
 
-    >>> from accelerated_unwrap.synthetic.grid import Grid
+    >>> from parvaneh.synthetic.grid import Grid
     >>> grid = Grid.centered(nx=5, ny=5, spacing=1000.0)
     >>> v_e, v_n, v_u = savage_velocity(grid, 0.0, 10000.0, 0.03)
     >>> bool(np.all(v_n[0, 3:] > 0.0))          # east of the fault: northwards
@@ -379,8 +379,8 @@ def savage_displacement(grid, strike_deg, locking_depth, slip_rate,
 
     The result is the *interseismic* displacement: a smooth accumulation.  It
     is **not** the coseismic offset of an earthquake, which would be a step
-    across the fault.  See :mod:`accelerated_unwrap.synthetic.mogi` and
-    :mod:`accelerated_unwrap.synthetic.okada` for those.
+    across the fault.  See :mod:`parvaneh.synthetic.mogi` and
+    :mod:`parvaneh.synthetic.okada` for those.
 
     Parameters
     ----------
@@ -412,7 +412,7 @@ def savage_displacement(grid, strike_deg, locking_depth, slip_rate,
 
     Examples
     --------
-    >>> from accelerated_unwrap.synthetic.grid import Grid
+    >>> from parvaneh.synthetic.grid import Grid
     >>> grid = Grid.centered(nx=5, ny=5, spacing=1000.0)
     >>> u_e, u_n, u_u = savage_displacement(grid, 0.0, 10000.0, 0.03,
     ...                                     interval=2.0)
@@ -472,7 +472,7 @@ def random_savage_source(grid, style="deep_locking", rng=None):
 
     Examples
     --------
-    >>> from accelerated_unwrap.synthetic.grid import Grid
+    >>> from parvaneh.synthetic.grid import Grid
     >>> grid = Grid.centered(nx=64, ny=64, spacing=100.0)
     >>> src = random_savage_source(grid, "north_south",
     ...                            rng=np.random.default_rng(20240101))

@@ -49,7 +49,7 @@ i.e. ``np.angle(np.exp(1j * phase))``.  A complex exponential *is* a phase on
 the unit circle, and ``np.angle`` is defined as its argument, so the identity
 :math:`\\arg(e^{i\\Phi}) = \\Phi \\bmod 2\\pi` holds by construction.  The
 package therefore uses the complex form everywhere and keeps the modulo form
-only in :mod:`accelerated_unwrap.synthetic.legacy`, where it is preserved for
+only in :mod:`parvaneh.synthetic.legacy`, where it is preserved for
 backward compatibility.
 
 Representation convention
@@ -58,7 +58,7 @@ Angles are returned in the *closed* interval :math:`[-\\pi, \\pi]`, and both
 endpoints are genuine outputs of the complex form::
 
     >>> import numpy as np
-    >>> from accelerated_unwrap.synthetic.wrapping import wrap_phase
+    >>> from parvaneh.synthetic.wrapping import wrap_phase
     >>> wrap_phase(-np.pi)
     -3.141592653589793
     >>> float(np.abs(wrap_phase(3.0 * np.pi)))
@@ -118,7 +118,7 @@ def wrap_phase(phase):
     phase : array_like
         Phase in radians.  Any shape.  ``NaN`` entries stay ``NaN``, which
         matters because masked pixels are represented as ``NaN`` in this
-        package (see :mod:`accelerated_unwrap.synthetic.masks`).
+        package (see :mod:`parvaneh.synthetic.masks`).
 
     Returns
     -------

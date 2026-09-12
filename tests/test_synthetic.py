@@ -11,7 +11,7 @@ detection, and reproducibility for a fixed seed.
 import numpy as np
 import pytest
 
-from accelerated_unwrap.synthetic import (
+from parvaneh.synthetic import (
     Grid,
     SarGeometry,
     aliasing_mask,

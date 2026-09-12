@@ -18,7 +18,7 @@ legacy/bin/
 legacy/build.log
 legacy/results/
 legacy/
-accelerated_unwrap/_cython_backend.c
+src/parvaneh/_cython_backend.c
 
 # Jupyter and editor state
 .ipynb_checkpoints/

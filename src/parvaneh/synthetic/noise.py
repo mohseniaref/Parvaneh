@@ -138,7 +138,7 @@ Conventions
   masked rather than silently acquiring a random phase.
 * The returned noisy phase from :func:`add_phase_noise` is **unwrapped**, i.e.
   continuous.  Wrap it with
-  :func:`accelerated_unwrap.synthetic.wrapping.wrap_phase` to obtain the
+  :func:`parvaneh.synthetic.wrapping.wrap_phase` to obtain the
   interferogram an unwrapper would actually be handed.  Keeping the two apart
   is deliberate: the whole benchmark rests on being able to compare the wrapped
   interferogram against the continuous truth it came from.
@@ -319,7 +319,7 @@ def add_phase_noise(phase, coherence, looks=DEFAULT_LOOKS, rng=None):
     ndarray
         The noisy phase, still continuous.  Its shape is the broadcast shape of
         ``phase`` and ``coherence``.  It is **not** wrapped; pass it to
-        :func:`accelerated_unwrap.synthetic.wrapping.wrap_phase` for the
+        :func:`parvaneh.synthetic.wrapping.wrap_phase` for the
         interferogram an unwrapper sees.
 
     Examples

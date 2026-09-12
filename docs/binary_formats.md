@@ -5,7 +5,7 @@ headerless rasters are loaded by stating all information that cannot be inferred
 from the bytes:
 
 ```python
-from accelerated_unwrap import read_raw_raster
+from parvaneh import read_raw_raster
 
 phase = read_raw_raster(
     "interferogram.f32",
@@ -18,7 +18,7 @@ Unsigned integer phase codes can be converted to radians explicitly:
 
 ```python
 import numpy as np
-from accelerated_unwrap import read_raw_raster
+from parvaneh import read_raw_raster
 
 phase = read_raw_raster(
     "wrapped_phase.u8",
@@ -37,7 +37,7 @@ exactly equal `rows * columns`.
 Writing is equally explicit:
 
 ```python
-from accelerated_unwrap import write_raw_raster
+from parvaneh import write_raw_raster
 
 write_raw_raster("result.f32", unwrapped_phase, dtype="<f4")
 ```

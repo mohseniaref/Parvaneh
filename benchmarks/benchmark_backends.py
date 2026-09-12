@@ -7,7 +7,7 @@ import statistics
 import time
 from pathlib import Path
 
-from accelerated_unwrap import available_backends, make_synthetic, rmse_aligned, unwrap
+from parvaneh import available_backends, make_synthetic, rmse_aligned, unwrap
 
 
 def main():

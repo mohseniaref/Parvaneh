@@ -1,16 +1,17 @@
 # 🦋 Parvaneh
 
-### Accelerated and reproducible two-dimensional phase unwrapping
+### Accelerated and reproducible phase unwrapping
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-263466.svg)](https://www.python.org/)
 [![Release: alpha](https://img.shields.io/badge/release-0.1.0a1-D94F88.svg)](https://github.com/mohseniaref/Parvaneh/releases)
 [![License: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-D94F88.svg)](LICENSE)
 [![Tests](https://github.com/mohseniaref/Parvaneh/actions/workflows/tests.yml/badge.svg)](https://github.com/mohseniaref/Parvaneh/actions/workflows/tests.yml)
 
-**Parvaneh** (Persian: پروانه, *butterfly*) is a research and teaching package
-for two-dimensional phase unwrapping. It combines independently written Python
-implementations, accelerated backends, synthetic validation scenes,
-reproducible benchmarks, and technical documentation.
+**Parvaneh** (Persian: پروانه, *butterfly*) is a Python package for phase
+unwrapping, written to be used for research, for teaching, and for everyday
+processing work. It combines independently written implementations, accelerated
+backends, synthetic validation scenes, reproducible benchmarks, and technical
+documentation.
 
 ## From a wrapped caterpillar to an unwrapped butterfly
 
@@ -40,6 +41,7 @@ not distribute the book, its original source code, or its supplied datasets.
 ## Highlights
 
 - Weighted and unweighted least-squares unwrapping
+- A `parvaneh` command line with method selection and machine-readable reports
 - NumPy/SciPy, explicit BLAS, Numba, optional Cython, and optional CuPy backends
 - Quality-guided path following
 - Goldstein branch cuts and residue detection
@@ -66,7 +68,7 @@ both present.
 ```python
 import matplotlib.pyplot as plt
 
-from accelerated_unwrap import make_synthetic, rmse_aligned, unwrap
+from parvaneh import make_synthetic, rmse_aligned, unwrap
 
 truth, wrapped, quality = make_synthetic(shape=(256, 320), noise=0.25, seed=7)
 estimate = unwrap(
@@ -97,68 +99,55 @@ An unwrapped result has an arbitrary additive constant. Quantitative
 comparisons must use a reference pixel, stable region, or an offset-aligned
 metric such as `rmse_aligned`.
 
-## Algorithms
+## Command line
 
-| Family | Public API | Status |
-|---|---|---|
-| Unweighted least squares | `unwrap(phase)` | Implemented and reference-tested |
-| Weighted least squares | `unwrap(phase, weight)` | Implemented and backend-tested |
-| Quality-guided path following | `quality_guided_unwrap` | Implemented and reference-tested |
-| Residue detection | `phase_residues` | Implemented and unit-tested |
-| Goldstein branch cuts | `goldstein_unwrap` | Implemented and reference-tested |
-| Quality-guided mask cuts | `mask_cut_unwrap` | Implemented and reference-tested |
-| Flynn minimum discontinuity | `flynn_unwrap` | Implemented and reference-tested |
-| Minimum-$L^p$ norm | `unwrap_lp` | Implemented and synthetically tested |
-| Multigrid families | — | Not yet ported |
-
-Exact porting and validation status is recorded in
-[`docs/porting_status.md`](docs/porting_status.md).
-
-## Notebooks and documentation
-
-The notebooks are stored without execution outputs and run without protected
-input rasters, external executables, or embedded third-party figures.
-
-- [`independent_synthetic_examples.ipynb`](notebooks/independent_synthetic_examples.ipynb)
-  runs all public algorithm families on one deterministic synthetic experiment.
-- [`chapter_01_introduction.ipynb`](notebooks/chapter_01_introduction.ipynb)
-  introduces wrapping, integer ambiguity, Itoh's condition, and failure cases.
-- [`chapter_02_line_integrals_residues.ipynb`](notebooks/chapter_02_line_integrals_residues.ipynb)
-  develops path independence, discrete curl, and residues.
-- [`phase_unwrapping_history_and_theory.md`](docs/phase_unwrapping_history_and_theory.md)
-  provides a historical and theoretical overview.
-
-The longer historical-data notebooks are intentionally kept outside the
-independent public release. Their concepts are covered by the synthetic
-notebook and publication-figure generator.
-
-## Validation and benchmarks
+The same algorithms are available without writing Python. `parvaneh` reads a
+wrapped phase raster, unwraps it with the method you name, and writes the result
+back out; `python -m parvaneh` is an equivalent spelling.
 
 ```bash
-pytest -q
-python benchmark.py --rows 256 --cols 320
-python benchmarks/benchmark_backends.py --rows 256 --cols 256
-python benchmarks/benchmark_path_following.py
+parvaneh --method list                                  # available methods
+parvaneh unwrap wrapped.npy -o unwrapped.npy --method goldstein --info
+parvaneh wrapped.npy -o unwrapped.npy --method ls \
+    --weight quality.npy --backend numba --workers -1
 ```
 
-All benchmarks generate deterministic inputs in memory. See
-[`docs/performance.md`](docs/performance.md) and
-[`docs/binary_formats.md`](docs/binary_formats.md).
+Input and output are `.npy` or `.npz` files, or headerless raw rasters described
+by `--shape`, `--dtype`, `--order`, `--scale`, and `--offset`. The command line
+also handles masks, weights, per-method tuning, backend selection, and a
+machine-readable `--info` summary.
 
-## Repository and copyright boundaries
+See [`docs/cli.md`](docs/cli.md) for the complete option reference and
+[`docs/algorithms.md`](docs/algorithms.md) for what each method does.
 
-This public repository contains only independently written software, original
-documentation, synthetic examples, tests, and original figures. It excludes:
+## Validation
 
-- the Ghiglia--Pritt book PDF;
-- the book's original C or MATLAB programs;
-- supplied phase, surface, correlation, and mask rasters;
-- third-party ZIP archives and document files; and
-- PDF exports, locally compiled binaries, generated extensions, reports, and
-  build logs.
+```bash
+pytest -q                                        # the full test suite
+python benchmark.py --rows 256 --cols 320        # warmed backend timings
+```
 
-The BSD license applies only to files distributed as part of Parvaneh. It does
-not grant rights to separately obtained third-party material.
+Every algorithm is checked against a mathematical property or a synthetic scene
+with a known answer, and every benchmark generates its input in memory, so no
+external dataset is required. See [`docs/validation.md`](docs/validation.md) for
+the methodology, [`docs/performance.md`](docs/performance.md) for measured
+timings, and [`docs/porting_status.md`](docs/porting_status.md) for the exact
+status of each algorithm.
+
+## Documentation
+
+| Page | Contents |
+|---|---|
+| [`docs/algorithms.md`](docs/algorithms.md) | the algorithm families, tuning, and offset invariance |
+| [`docs/cli.md`](docs/cli.md) | command-line manual: files, masks, backends, exit codes |
+| [`docs/notebooks.md`](docs/notebooks.md) | the notebooks and how to run them |
+| [`docs/validation.md`](docs/validation.md) | how correctness is tested and benchmarked |
+| [`docs/performance.md`](docs/performance.md) | measured timings and scaling |
+| [`docs/binary_formats.md`](docs/binary_formats.md) | raw raster conventions and I/O |
+| [`docs/porting_status.md`](docs/porting_status.md) | per-algorithm porting and validation status |
+| [`docs/phase_unwrapping_history_and_theory.md`](docs/phase_unwrapping_history_and_theory.md) | historical and theoretical background |
+| [`docs/repository_scope.md`](docs/repository_scope.md) | what the repository contains and what the license covers |
+| [`docs/release_checklist.md`](docs/release_checklist.md) | the release process |
 
 ## Citation
 
@@ -173,4 +162,7 @@ Release metadata for Zenodo are provided in [`.zenodo.json`](.zenodo.json).
 ## License
 
 Parvaneh's independently written source and documentation are released under
-the [BSD 3-Clause License](LICENSE).
+the [BSD 3-Clause License](LICENSE). The license covers the files distributed as
+part of this repository; it does not grant rights to separately obtained
+third-party material. The boundary is documented in
+[`docs/repository_scope.md`](docs/repository_scope.md).

@@ -1,4 +1,4 @@
-"""Accelerated weighted least-squares 2-D phase unwrapping."""
+"""Accelerated and reproducible phase unwrapping."""
 
 __version__ = "0.1.0a1"
 
