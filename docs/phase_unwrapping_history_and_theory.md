@@ -438,3 +438,10 @@ determine how each method treats ambiguity and error.
    2692–2701, 1997. <https://doi.org/10.1364/JOSAA.14.002692>
 7. D. C. Ghiglia and M. D. Pritt, *Two-Dimensional Phase Unwrapping: Theory,
    Algorithms, and Software*. New York: Wiley, 1998. ISBN 978-0-471-24935-1.
+
+The complete bibliography of the project — including the numerical-methods and
+algorithms sources, the software compared against, and a table mapping each
+function to the publication it comes from — is in
+[`references.md`](references.md). The step-by-step derivations are in
+[`mathematics.md`](mathematics.md), and the implementation notes are in
+[`algorithms.md`](algorithms.md).

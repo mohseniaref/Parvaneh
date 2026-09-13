@@ -607,3 +607,151 @@ def test_parser_defaults_match_the_documented_interface():
     assert args.order == "C"
     assert args.npz_key == "phase"
     assert args.invalid_fill is None
+    assert args.shape is None
+    parsed = build_parser().parse_args(["wrapped.raw", "--shape", "4", "5"])
+    assert parsed.shape == [4, 5]
+
+
+# --------------------------------------------------------------------------
+# stacks: .npy/.npz may hold more than two dimensions
+# --------------------------------------------------------------------------
+
+@pytest.fixture
+def cube(tmp_path):
+    """A small deterministic stack of images, and the ramp they came from."""
+    zz, yy, xx = np.meshgrid(np.arange(4), np.arange(12), np.arange(16),
+                             indexing="ij")
+    truth = 0.35 * xx + 0.25 * yy + 0.6 * zz
+    path = tmp_path / "cube.npy"
+    np.save(str(path), wrap_phase(truth).astype(np.float32))
+    return truth, path
+
+
+def test_ls_unwraps_a_stack_jointly(cube, tmp_path, capsys):
+    """A cube is one solve over every axis, and --info reports the rank."""
+    truth, path = cube
+    target = tmp_path / "out.npy"
+    status, out, err = run([str(path), "--method", "ls", "--info",
+                            "-o", str(target), "-q"], capsys)
+    assert status == 0, err
+    report = json.loads(out)
+    assert report["shape"] == [4, 12, 16]
+    assert report["method"] == "ls"
+    result = np.load(str(target))
+    assert result.shape == truth.shape
+    # The steps are all below pi, so the answer is exact up to the one global
+    # multiple of 2 pi that no unwrapper can pin down.
+    assert np.abs(wrap_phase(result - truth)).max() < 1e-5
+
+
+def test_reliability_unwraps_a_stack(cube, tmp_path, capsys):
+    truth, path = cube
+    target = tmp_path / "out.npy"
+    status, out, err = run([str(path), "--method", "reliability", "--info",
+                            "-o", str(target), "-q"], capsys)
+    assert status == 0, err
+    report = json.loads(out)
+    assert report["shape"] == [4, 12, 16]
+    result = np.load(str(target))
+    assert np.abs(wrap_phase(result - truth)).max() < 1e-5
+
+
+def test_two_dimensional_method_refuses_a_stack(cube, capsys):
+    _, path = cube
+    status, _, err = run([str(path), "--method", "goldstein"], capsys)
+    assert status == 1
+    assert "unwraps a two-dimensional image" in err
+    assert "has shape 4x12x16" in err
+    assert "ls, reliability" in err
+
+
+def test_shape_with_three_numbers_is_an_error(cube, tmp_path, capsys):
+    """--shape describes one raw image, so it never takes three numbers."""
+    _, path = cube
+    status, _, err = run([str(path), "--shape", "4", "12", "16",
+                          "-o", str(tmp_path / "out.npy")], capsys)
+    assert status == 1
+    assert "--shape takes two numbers" in err
+    assert "got 3 numbers" in err
+
+
+def test_weight_for_a_quality_method_prints_a_note(scene, tmp_path, capsys):
+    """A dropped weight is announced rather than silently ignored."""
+    _, wrapped, path = scene
+    np.save(str(tmp_path / "weight.npy"), np.ones(wrapped.shape))
+    status, _, err = run([str(path), "--method", "goldstein",
+                          "--weight", str(tmp_path / "weight.npy"),
+                          "-o", str(tmp_path / "out.npy")], capsys)
+    assert status == 0, err
+    assert "ignores" in err
+    assert "--weight" in err
+    # -q hides the note; the run is identical either way.
+    status, _, quiet = run([str(path), "--method", "goldstein",
+                           "--weight", str(tmp_path / "weight.npy"),
+                           "-o", str(tmp_path / "out.npy"), "-q"], capsys)
+    assert status == 0
+    assert quiet == ""
+
+
+def test_a_stack_reports_the_engine_that_ran(cube, tmp_path, capsys):
+    """Compiled kernels are two-dimensional, so a stack runs the general path.
+
+    The report must say what really ran, because a claim of "numba" on an array
+    Numba never touched is a wrong answer to a fair question.
+    """
+    _, path = cube
+    status, out, err = run([str(path), "--method", "ls", "--backend", "numpy",
+                            "--info", "-o", str(tmp_path / "out.npy")], capsys)
+    assert status == 0, err
+    assert json.loads(out)["backend"] == "numpy"
+    assert "backend numpy" in err
+
+    pytest.importorskip("numba")
+    status, out, err = run([str(path), "--method", "ls", "--backend", "numba",
+                            "--info", "-o", str(tmp_path / "out.npy")], capsys)
+    assert status == 0, err
+    assert json.loads(out)["backend"] == "numpy"
+    assert "backend numpy" in err
+
+
+def test_a_two_dimensional_image_keeps_its_compiled_backend(scene, tmp_path,
+                                                            capsys):
+    """The same request on an image does reach the compiled kernel."""
+    _, _, path = scene
+    pytest.importorskip("numba")
+    status, out, err = run([str(path), "--method", "ls", "--backend", "numba",
+                            "--info", "-o", str(tmp_path / "out.npy")], capsys)
+    assert status == 0, err
+    assert json.loads(out)["backend"] == "numba"
+    assert "backend numba" in err
+
+
+def test_a_stack_cannot_be_written_as_a_raw_raster(cube, tmp_path, capsys):
+    _, path = cube
+    status, _, err = run([str(path), "--method", "ls", "--shape", "4", "12",
+                          "-o", str(tmp_path / "out.raw")], capsys)
+    assert status == 1
+    assert "headerless raster holds one two-dimensional image" in err
+    assert "Write a cube to .npy or .npz" in err
+
+
+@raster_only
+def test_a_stack_cannot_be_written_as_a_raster(cube, tmp_path, capsys):
+    _, path = cube
+    status, _, err = run([str(path), "--method", "ls",
+                          "-o", str(tmp_path / "out.tif")], capsys)
+    assert status == 1
+    assert "georeferenced raster holds one two-dimensional band" in err
+    assert "Write a cube to .npy or .npz" in err
+
+
+def test_a_stack_survives_an_npz_round_trip(cube, tmp_path, capsys):
+    """The stack formats are the ones that record their own shape."""
+    _, path = cube
+    target = tmp_path / "out.npz"
+    status, _, err = run([str(path), "--method", "reliability",
+                          "-o", str(target), "-q"], capsys)
+    assert status == 0, err
+    with np.load(str(target)) as archive:
+        result = archive["phase"]
+    assert result.shape == (4, 12, 16)

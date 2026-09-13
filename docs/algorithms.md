@@ -11,6 +11,11 @@ two samples, so the same call unwraps a single image or a stack of them (see
 implementation and validation status is recorded in
 [`porting_status.md`](porting_status.md).
 
+Each family below ends with a **Where this comes from** line naming the
+publication it is based on. The full derivations, written for a reader with one
+linear-algebra course, are in [`mathematics.md`](mathematics.md); DOIs for the
+papers and ISBNs for the books are in [`references.md`](references.md).
+
 ## The problem in one paragraph
 
 A wrapped phase image stores every value modulo $2\pi$:
@@ -127,6 +132,13 @@ is a stack: `unwrap` treats the array's neighbours along every axis uniformly,
 so passing a 3-D volume unwraps it in one solve instead of slicing it first —
 see [One image, a stack, or a cube](#one-image-a-stack-or-a-cube).
 
+**Where this comes from.** Ghiglia and Romero, "Robust two-dimensional weighted
+and unweighted phase unwrapping that uses fast transforms and iterative methods",
+*JOSA A* **11**, 107–117, 1994
+(<https://doi.org/10.1364/JOSAA.11.000107>); the textbook treatment is Ghiglia
+and Pritt (1998), chapters 2 and 3. The derivation is in
+[`mathematics.md`](mathematics.md), sections 5 to 7.
+
 ### Quality-guided path following — `quality_guided_unwrap`, CLI `quality-guided`
 
 Computes a per-pixel *quality* map, starts from the most reliable pixel, and
@@ -148,6 +160,12 @@ Four quality measures are available:
 `min_gradient` is the classic Goldstein–Zebker edge priority and is the
 default. The other three take a `--window` (pixels) and default to a window of
 3 when none is given. Larger quality values mean more reliable.
+
+**Where this comes from.** Ghiglia and Pritt (1998), chapter 4, for all four
+measures; `min_gradient` is the edge priority used by Goldstein, Zebker and
+Werner, *Radio Science* **23**, 713–720, 1988
+(<https://doi.org/10.1029/RS023i004p00713>). See
+[`mathematics.md`](mathematics.md), section 9, for the defining formulas.
 
 ### Reliability sorting — `reliability_unwrap`, CLI `reliability`
 
@@ -201,6 +219,31 @@ also returns a `ReliabilityInfo` dataclass with `backend`, `pixels`, `edges`
 uses when Numba is installed; `backend="python"` is the readable reference
 implementation and is only practical on small arrays.
 
+**Where this comes from.** Herráez, Burton, Lalor and Gdeisat, *Applied Optics*
+**41**(35), 7437–7444, 2002 (<https://doi.org/10.1364/AO.41.007437>), for the
+rating strategy — rate every pixel, sort the edges that rating induces, merge in
+that order so the result is independent of any traversal — and for the
+observation that the merged path need not be continuous;
+Abdul-Rahman, Gdeisat, Burton and Lalor, *Proceedings of SPIE* **5856**, 32–40,
+2005 (<https://doi.org/10.1117/12.611415>), for the volume version, with the
+journal form in *Applied Optics* **46**(26), 6623–6635, 2007
+(<https://doi.org/10.1364/AO.46.006623>) and the singularity-loop remedy in
+*Applied Optics* **48**(23), 4582–4596, 2009
+(<https://doi.org/10.1364/AO.48.004582>). The spanning forest is Kruskal's
+algorithm; the merge loop is union–find. The derivation is in
+[`mathematics.md`](mathematics.md), section 10.
+
+One difference from the published method is deliberate and is stated plainly
+because the two are easy to confuse. Herráez and co-workers rate a pixel from
+the four **second** differences in its $3\times3$ neighbourhood summed as
+squares, and give an edge the **sum** of its two endpoints' ratings. Parvaneh
+rates a pixel from the **first** differences to its immediate neighbours,
+weighted by the confidence of each step, and normalises by $1/(1+S)$ so that a
+larger rating means a more trustworthy pixel. The equations above are therefore
+Parvaneh's own rating on their sorting scheme, and a numerical comparison
+against the original is a comparison of accuracy, not of identity. The
+distinction is repeated in [`references.md`](references.md), entry 10.
+
 ### Residues — `phase_residues`
 
 Not an unwrapper: it is the diagnostic that explains why the others differ. It
@@ -212,6 +255,11 @@ is a quick noise indicator for a scene. Cells touching a masked-out pixel are
 assigned zero charge, because a residue that depends on an unknown observation
 is not meaningful.
 
+**Where this comes from.** Goldstein, Zebker and Werner (1988), who introduced
+residues into interferometry; the index formula and the boundary caveat are in
+Ghiglia and Pritt (1998), chapter 4. Derivation:
+[`mathematics.md`](mathematics.md), section 4.
+
 ### Goldstein branch cuts — `goldstein_unwrap`, CLI `goldstein`
 
 Detects residues, connects nearby opposite charges with branch cuts, and
@@ -221,6 +269,12 @@ then integrated over the image with the cuts acting as barriers. The
 charge is allowed to grow, which bounds the runtime. If the residue density is
 high, cuts can become long and the unwrapped surface develops visible seams.
 
+**Where this comes from.** Goldstein, Zebker and Werner, *Radio Science* **23**,
+713–720, 1988 (<https://doi.org/10.1029/RS023i004p00713>) for the cut
+construction, with the guard-ring treatment of invalid regions from Ghiglia and
+Pritt (1998), chapter 5. Derivation:
+[`mathematics.md`](mathematics.md), section 11.
+
 ### Quality-guided mask cuts — `mask_cut_unwrap`, CLI `mask-cut`
 
 Instead of balancing residues individually, this method builds the cut set from
@@ -228,6 +282,11 @@ the quality map: it repeatedly places cuts along the least reliable regions so
 that no residue loop survives, then integrates. It usually produces smoother
 results than Goldstein cuts on InSAR-like data at the cost of a more expensive
 search.
+
+**Where this comes from.** Ghiglia and Pritt (1998), chapter 6, which describes
+mask cuts grown from the quality map; the implementation here grows a
+best-first frontier and thins it, as described in
+[`mathematics.md`](mathematics.md), section 11.
 
 ### Flynn minimum discontinuity — `flynn_unwrap`, CLI `flynn`
 
@@ -240,6 +299,11 @@ topography) because it does not smear them the way a quadratic cost does. It is
 also the slowest of the six methods here, so pass `--quality min_gradient` and
 expect seconds rather than milliseconds on large rasters.
 
+**Where this comes from.** Flynn, "Two-dimensional phase unwrapping with minimum
+weighted discontinuity", *JOSA A* **14**, 2692–2701, 1997
+(<https://doi.org/10.1364/JOSAA.14.002692>). Derivation:
+[`mathematics.md`](mathematics.md), section 12.
+
 ### Minimum $L^p$ norm — `unwrap_lp`, CLI `lp`
 
 Iteratively reweighted least squares on the same Poisson structure, with a
@@ -250,6 +314,13 @@ least-squares solver. `p = 2` reproduces ordinary least squares; smaller values
 remaining a convex, smoothly solvable problem. The default `p = 1.2` is a good
 compromise; `--epsilon` controls the softening that keeps the reweighting
 finite near zero residual.
+
+**Where this comes from.** Ghiglia and Romero, "Minimum $L^p$-norm
+two-dimensional phase unwrapping", *JOSA A* **13**, 1999–2013, 1996
+(<https://doi.org/10.1364/JOSAA.13.001999>), for the objective and the
+reweighting; the general M-estimator theory is in Huber and Ronchetti, *Robust
+Statistics*, 2nd ed., Wiley, 2009. Derivation:
+[`mathematics.md`](mathematics.md), section 8.
 
 ## Choosing a method
 
@@ -334,11 +405,29 @@ explicitly:
 ## References
 
 - D. C. Ghiglia and M. D. Pritt, *Two-Dimensional Phase Unwrapping: Theory,
-  Algorithms, and Software*. Wiley, 1998. — the mathematical source of every
-  family implemented here except reliability sorting.
+  Algorithms, and Software*. Wiley, 1998. ISBN 978-0-471-24935-1. — the
+  mathematical source of every family implemented here except reliability
+  sorting.
 - M. A. Herráez, D. R. Burton, M. J. Lalor and M. A. Gdeisat, "Fast
   two-dimensional phase-unwrapping algorithm based on sorting by reliability
   following a noncontinuous path", *Applied Optics* **41**(35), 7437–7444, 2002.
-  — pixel reliability and the sorted spanning tree behind `reliability_unwrap`.
+  <https://doi.org/10.1364/AO.41.007437> — the sorted-spanning-tree strategy
+  behind `reliability_unwrap`, together with the observation that the merged
+  path need not be continuous.
+- H. S. Abdul-Rahman, M. A. Gdeisat, D. R. Burton and M. J. Lalor, "Fast
+  three-dimensional phase-unwrapping algorithm based on sorting by reliability
+  following a noncontinuous path", *Proceedings of SPIE* **5856**, 32–40, 2005.
+  <https://doi.org/10.1117/12.611415> — the three-dimensional form of the same
+  construction, and the reference scikit-image uses for its three-dimensional
+  case. See also the journal version, "Fast and robust three-dimensional best
+  path phase unwrapping algorithm", *Applied Optics* **46**(26), 6623–6635, 2007,
+  <https://doi.org/10.1364/AO.46.006623>, and the follow-up that avoids
+  singularity loops, *Applied Optics* **48**(23), 4582–4596, 2009,
+  <https://doi.org/10.1364/AO.48.004582>.
+- The derivations of every equation above:
+  [`mathematics.md`](mathematics.md).
+- The complete bibliography, including books, the numerical-methods sources and
+  the software compared against:
+  [`references.md`](references.md).
 - Historical and theoretical background:
   [`phase_unwrapping_history_and_theory.md`](phase_unwrapping_history_and_theory.md).

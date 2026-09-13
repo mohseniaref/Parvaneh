@@ -14,12 +14,14 @@ ROOT_FILES = ("README.md", "LICENSE", "pyproject.toml", "setup.py",
 TREES = ("src", "benchmarks", "tests", "tools")
 DOCS = ("algorithms.md", "cli.md", "notebooks.md", "validation.md",
         "repository_scope.md", "binary_formats.md", "porting_status.md",
-        "release_checklist.md", "performance.md",
+        "release_checklist.md", "performance.md", "mathematics.md",
+        "references.md", "raster_io.md",
         "phase_unwrapping_history_and_theory.md")
 NOTEBOOKS = ("independent_synthetic_examples.ipynb",
              "chapter_01_introduction.ipynb",
              "chapter_02_line_integrals_residues.ipynb",
-             "synthetic_insar_generator.ipynb")
+             "synthetic_insar_generator.ipynb",
+             "three_dimensional_unwrapping.ipynb")
 EXCLUDED_SUFFIXES = (".so", ".pyc", ".c", ".pdf")
 
 

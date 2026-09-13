@@ -15,6 +15,15 @@ and ``.npz`` inputs carry their own metadata and need nothing extra, and a
 georeferenced raster (GeoTIFF and friends) is read through GDAL, which brings its
 own geotransform, projection and nodata value.
 
+Input and output are two-dimensional by default, but a stack (a cube of
+interferograms, say) is welcome as ``.npy``/``.npz`` and is unwrapped jointly
+along every axis::
+
+    parvaneh unwrap cube.npy --method reliability -o cube-u.npy
+
+Headerless raw rasters and georeferenced rasters stay two-dimensional, because
+neither format carries an axis count.
+
 All progress and diagnostic chatter goes to stderr, so the ``--info`` JSON on
 stdout stays clean for piping::
 
@@ -69,12 +78,21 @@ METHOD_BACKENDS = {
     "lp": (),
 }
 
+#: Methods that unwrap a stack of any rank, not only a single two-dimensional
+#: image.  Everything else is a two-dimensional algorithm and is told so when
+#: handed a cube, rather than failing somewhere deep inside.
+ND_METHODS = ("ls", "reliability")
+
+#: Methods that can use ``--weight``.  The others build their own quality map,
+#: so a weight handed to them would be silently dropped.
+WEIGHT_METHODS = ("ls", "reliability")
+
 
 def build_parser(add_help=True):
     """Build the parser for ``parvaneh unwrap`` and its implicit shorthand."""
     parser = CommandParser(
         prog="parvaneh unwrap",
-        description="Unwrap a 2-D wrapped phase image.",
+        description="Unwrap a wrapped phase image or a stack of them.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         add_help=add_help,
         epilog="""\
@@ -90,6 +108,9 @@ examples:
 
   # a noisy image that carries residues: reliability sorting avoids them
   parvaneh unwrap noisy.npy --method reliability -o unwrapped.npy
+
+  # a cube of interferograms, unwrapped jointly along all three axes
+  parvaneh unwrap cube.npy --method ls -o cube-unwrapped.npy
 
   # georeferenced raster in and out, keeping the geotransform and the CRS
   parvaneh unwrap wrapped.tif --method goldstein -o unwrapped.tif
@@ -107,9 +128,10 @@ examples:
                              "use '--method list' to see them all")
 
     io_group = parser.add_argument_group("input/output")
-    io_group.add_argument("--shape", nargs=2, type=int, metavar=("ROWS", "COLS"),
-                          help="shape of a headerless raw raster (not needed for "
-                               ".npy, .npz or a georeferenced raster)")
+    io_group.add_argument("--shape", nargs="+", type=int, metavar="DIM",
+                          help="shape of a headerless raw raster, ROWS COLS (not "
+                               "needed for .npy, .npz or a georeferenced raster, "
+                               "which know their own shape)")
     io_group.add_argument("--dtype", default="<f4",
                           help="dtype of a headerless raw input (default: <f4)")
     io_group.add_argument("--band", type=int, default=1,
@@ -223,7 +245,10 @@ def print_methods():
 
 def _load(path, *, shape, dtype, order, npz_key, what, scale=1.0, offset=0.0,
           band=1):
-    """Read a 2-D array from ``.npy``, ``.npz``, a raster or a headerless file.
+    """Read an array from ``.npy``, ``.npz``, a raster or a headerless file.
+
+    Any rank is accepted; whether a particular method can use a rank other than
+    two is decided by the caller, which can name the alternatives.
 
     Returns ``(array, meta)``.  ``meta`` is a
     :class:`~parvaneh.raster.RasterMeta` for georeferenced input, which is what
@@ -263,18 +288,28 @@ def _load(path, *, shape, dtype, order, npz_key, what, scale=1.0, offset=0.0,
             raise SystemExit("error: cannot read %s: %s" % (source, exc))
 
     array = np.asarray(array)
-    if array.ndim != 2:
-        raise SystemExit("error: %s must be two-dimensional, got shape %s"
-                         % (what, array.shape))
+    if array.ndim == 0:
+        raise SystemExit("error: %s is a single number, not an image or a stack"
+                         % what)
     return array, meta
 
 
 def _save(path, array, *, shape, dtype, order, npz_key, invalid_fill, like=None):
-    """Write a 2-D array to ``.npy``, ``.npz``, a raster or a headerless file."""
+    """Write an array to ``.npy``, ``.npz``, a raster or a headerless file.
+
+    Only the first two formats can hold a stack: a raster band and a headerless
+    raster are both a single two-dimensional image by construction.
+    """
     target = Path(path)
     suffix = target.suffix.lower()
 
     if suffix in RASTER_SUFFIXES:
+        if np.ndim(array) != 2:
+            raise SystemExit(
+                "error: a georeferenced raster holds one two-dimensional band, "
+                "so %s cannot store a %d-dimensional result.\n"
+                "       Write a cube to .npy or .npz instead."
+                % (target, np.ndim(array)))
         return _save_raster(target, array, dtype, invalid_fill, like)
     if suffix == ".npy":
         np.save(str(target), array)
@@ -282,6 +317,13 @@ def _save(path, array, *, shape, dtype, order, npz_key, invalid_fill, like=None)
     if suffix == ".npz":
         np.savez(str(target), **{npz_key: array})
         return
+
+    if np.ndim(array) != 2:
+        raise SystemExit(
+            "error: a headerless raster holds one two-dimensional image, so %s "
+            "cannot store a %d-dimensional result.\n"
+            "       Write a cube to .npy or .npz instead."
+            % (target, np.ndim(array)))
 
     finite = np.isfinite(array).all()
     if not finite:
@@ -568,9 +610,24 @@ def run(args):
     if args.max_iter < 1:
         raise SystemExit("error: --max-iter must be at least 1")
 
+    if args.shape is not None and len(args.shape) != 2:
+        raise SystemExit(
+            "error: --shape takes two numbers, ROWS COLS, because a headerless "
+            "raw raster is a single two-dimensional image (got %d numbers).\n"
+            "       Save a stack as .npy or .npz, which record their own shape."
+            % len(args.shape))
+
     phase, meta = _load(args.input, shape=args.shape, dtype=args.dtype,
                         order=args.order, npz_key=args.npz_key, what="input",
                         scale=args.scale, offset=args.offset, band=args.band)
+    if phase.ndim != 2 and args.method not in ND_METHODS:
+        raise SystemExit(
+            "error: --method %s unwraps a two-dimensional image, but %s has "
+            "shape %s.\n"
+            "       The methods that accept a stack of any rank are: %s."
+            % (args.method, args.input,
+               "x".join(str(size) for size in phase.shape),
+               ", ".join(ND_METHODS)))
     input_mask = None
     if not np.all(np.isfinite(phase)):
         if meta is None:
@@ -593,14 +650,26 @@ def run(args):
         if array is not None and array.shape != phase.shape:
             raise SystemExit("error: %s has shape %s but the input has shape %s"
                              % (name, array.shape, phase.shape))
+    if weight is not None and args.method not in WEIGHT_METHODS and not args.quiet:
+        # Dropping a weight silently would let a user believe coherence steered
+        # the result when it did not.  The run still makes sense without it, so
+        # this is a note rather than a refusal.
+        log("note     --method %s builds its own quality map and ignores "
+            "--weight (weights are used by: %s)"
+            % (args.method, ", ".join(WEIGHT_METHODS)))
     if input_mask is not None:
         mask = input_mask if mask is None else (mask & input_mask)
 
     backend = _resolve_backend(args.backend, args.method)
+    # The compiled least-squares kernels are two-dimensional, and core.unwrap()
+    # quietly runs the NumPy engine for a stack instead of failing.  Report the
+    # engine that really runs, so this line agrees with --info's "backend".
+    fallback = ("numba", "cython", "cupy")
+    running = ("numpy" if phase.ndim != 2 and backend in fallback else backend)
     if not args.quiet:
         log("input    %s  shape=%s" % (args.input, "x".join(map(str, phase.shape))))
         log("method   %s (backend %s, workers %d)"
-            % (args.method, backend or "-", args.workers))
+            % (args.method, running or "-", args.workers))
 
     started = time.perf_counter()
     result, detail = _run_method(args, phase, backend, mask, weight)
@@ -627,7 +696,9 @@ def run(args):
             log("wrote    %s" % args.output)
 
     if args.info:
-        summary = {"method": args.method, "backend": backend,
+        # ``detail`` carries a "backend" of its own for the methods that return a
+        # report; where it does not, the engine that ran is the one above.
+        summary = {"method": args.method, "backend": running,
                    "center": args.center, "shape": list(result.shape),
                    "seconds": seconds, "input": args.input, "output": args.output}
         if meta is not None:

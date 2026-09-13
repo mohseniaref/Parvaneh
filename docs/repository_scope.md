@@ -24,8 +24,11 @@ translated from another program, every docstring and document is original text,
 and every figure is produced by the code in this repository from a seeded
 synthetic input. Mathematical provenance — which paper or textbook describes an
 algorithm — is cited in
-[`porting_status.md`](porting_status.md) and
+[`porting_status.md`](porting_status.md),
+[`algorithms.md`](algorithms.md),
+[`mathematics.md`](mathematics.md) and
 [`phase_unwrapping_history_and_theory.md`](phase_unwrapping_history_and_theory.md),
+and collected with DOIs and ISBNs in [`references.md`](references.md),
 because citing an algorithm is not the same as redistributing an implementation
 of it.
 

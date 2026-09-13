@@ -110,6 +110,42 @@ For `.npz` archives use `--npz-key` to say which array inside the archive holds
 the phase (default: `phase`). If the archive does not contain that name, the
 error message lists the names it does contain.
 
+`.npy` and `.npz` may hold **more than two dimensions**, and that is the only
+way to feed the CLI a stack. A stack is unwrapped *jointly*, not one image at a
+time, which is what lets a pixel that is noisy in one pass be reached through a
+neighbour in space or in time:
+
+```bash
+parvaneh unwrap cube.npy --method ls -o cube-unwrapped.npy
+parvaneh unwrap cube.npy --method reliability -o cube-unwrapped.npy
+```
+
+Two methods accept a stack: `ls` and `reliability`. Every other method is
+two-dimensional; asking for one of them with a stack is refused before any work
+starts:
+
+```text
+error: --method goldstein unwraps a two-dimensional image, but cube.npy has shape 24x32x4.
+       The methods that accept a stack of any rank are: ls, reliability.
+```
+
+The same rule reaches the output. A GeoTIFF or a headerless raw raster holds one
+two-dimensional image, so a stack must be written back to `.npy` or `.npz`:
+
+```text
+error: a georeferenced raster holds one two-dimensional band, so cube.tif cannot store a 3-dimensional result.
+       Write a cube to .npy or .npz instead.
+```
+
+A mask or a weight for a stack must match the stack's full shape (all three
+axes), exactly as it must match a two-dimensional image.
+
+One consequence of stacks is easy to misread in the progress line: the compiled
+kernels are two-dimensional, so `--backend numba` (or `cython`, or `cupy`) on a
+stack runs the general engine and the run reports `backend numpy`. That is not a
+failure and not a silent fallback to a different algorithm; see the `--info`
+section below.
+
 ### Raw rasters — no header at all
 
 Many InSAR tools write the pixels of an image with no shape and no data type.
@@ -121,7 +157,7 @@ parvaneh unwrap wrapped.raw --shape 1024 1024 --dtype '<f4' -o unwrapped.raw
 
 | Option | Meaning | Default |
 |---|---|---|
-| `--shape ROWS COLS` | image size; **required** for raw input | — |
+| `--shape ROWS COLS` | image size, exactly two numbers; **required** for raw input | — |
 | `--dtype DTYPE` | how the raw bytes are encoded | `<f4` (little-endian float32) |
 | `--out-dtype` | encoding of a raw **output** | same as `--dtype` |
 | `--order {C,F}` | row-major (`C`) or column-major (`F`) storage | `C` |
@@ -250,7 +286,17 @@ parvaneh unwrap wrapped.npy --weight coherence.npy -o out.npy
 ```
 
 A weight can be a raw raster too, with `--weight-dtype` (default `<f4`) and, for
-raw input, `--shape`.
+raw input, `--shape`. `--shape` always takes exactly two numbers, because a raw
+raster is a single two-dimensional image; a weight for a stack is a `.npy`/`.npz`
+array with the stack's shape.
+
+Only `ls` and `reliability` read a weight. Passing `--weight` to any other method
+is not an error — those methods build their own quality map — but it would be
+easy to believe coherence steered the result when it did not, so the run says so:
+
+```text
+note     --method goldstein builds its own quality map and ignores --weight (weights are used by: ls, reliability)
+```
 
 For `ls` a mask is simply converted into a 0/1 weight, so `--mask` and
 `--weight` are the same kind of information; if you pass both, the weight wins.
@@ -416,6 +462,16 @@ method-specific block:
 | `flynn` | `iterations` |
 | `lp` | `p`, `outer_iterations`, `inner_iterations`, `objective`, `relative_change` |
 
+`backend` reports the engine that **actually ran**, not the one you asked for.
+The compiled kernels (`numba`, `cython`, `cupy`) are written for two-dimensional
+images; the Python/C path in the package handles every rank. So on a stack,
+`--backend numba` is accepted, the compiled kernel is skipped, and `backend`
+reads `numpy` — which is also what the progress line on stderr says
+(`method ls (backend numpy, workers -1)`). Nothing is silently wrong: the answer
+is the same code path, just the general one. The `reliability` method is the
+exception among the backend-aware ones in that its compiled merge loop is
+rank-agnostic, so it keeps the requested backend on a stack.
+
 Two of these are worth watching in practice: `converged: false` for `ls` means
 `--max-iter` stopped the solver early (raise it or relax `--tol`), and a large
 `cut_pixels` for `goldstein` or `mask-cut` means the cut set grew large, which
@@ -488,6 +544,11 @@ into a global field.
 | `error: mask has shape … but the input has shape …` | the mask was written for a different crop or a different `--order` |
 | `error: --backend numba only supports --quality min_gradient` | use `--backend python`, or `--quality min_gradient` |
 | `error: backend 'cython' is not available on this machine (usable here: numpy, numba)` | that kernel is not built/installed here; use a listed one or `--backend auto` |
+| `error: --method goldstein unwraps a two-dimensional image, but cube.npy has shape 24x32x4` | the input is a stack and that method is not; use `--method ls` or `--method reliability`, or unwrap one slice at a time |
+| `error: a georeferenced raster holds one two-dimensional band, so cube.tif cannot store a 3-dimensional result` | a stack has nowhere to go in a single-band file; write `-o cube.npy` or `-o cube.npz` |
+| `error: a headerless raster holds one two-dimensional image, so cube.raw cannot store a 3-dimensional result` | same, for `--shape`-described raw output; use `.npy`/`.npz`, which record their own shape |
+| `error: --shape takes two numbers, ROWS COLS … (got 3 numbers)` | `--shape` describes one raw image; a stack belongs in `.npy` or `.npz` |
+| `--info` says `"backend": "numpy"` although `--backend numba` was given | the input is a stack and the compiled kernels are two-dimensional only; the general path ran instead. See the `--info` section |
 | output is wildly offset from what you expected | you used `--center none`; the default `circular` aligns to the input |
 | `parvaneh` prints nothing and does nothing | pass an input file, or `--method list`; with no arguments it prints help |
 | huge runtime on a big scene | reduce iterations: `--tol 1e-6 --max-iter 40`; or use `quality-guided` |

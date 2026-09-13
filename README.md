@@ -163,6 +163,8 @@ status of each algorithm.
 | Page | Contents |
 |---|---|
 | [`docs/algorithms.md`](docs/algorithms.md) | the algorithm families, tuning, and offset invariance |
+| [`docs/mathematics.md`](docs/mathematics.md) | the equations behind every method, derived for a first course in linear algebra |
+| [`docs/references.md`](docs/references.md) | the full bibliography: books, papers with DOIs, and the software compared against |
 | [`docs/cli.md`](docs/cli.md) | command-line manual: files, masks, backends, exit codes |
 | [`docs/notebooks.md`](docs/notebooks.md) | the notebooks and how to run them |
 | [`docs/validation.md`](docs/validation.md) | how correctness is tested and benchmarked |
