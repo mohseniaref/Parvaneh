@@ -79,6 +79,8 @@ available methods:
                     backends: numba, blas, numpy
   quality-guided  best-first traversal from the most reliable edges
                     backends: numba, python
+  reliability     reliability sorting into a maximum-reliability tree
+                    backends: numba, python
   goldstein       Goldstein expanding-box branch cuts
                     backends: no backend choice
   ...
@@ -239,8 +241,9 @@ it does not.
 
 A **weight** is the continuous version of the same idea: a per-pixel
 reliability, for instance coherence, which is more informative than a hard
-yes/no. Weights must be finite and nonnegative, and only the least-squares
-method (`--method ls`) accepts them:
+yes/no. Weights must be finite and nonnegative, and two methods accept them:
+`ls` uses them as solver weights, and `reliability` uses them to scale how much
+each pixel's phase differences are trusted:
 
 ```bash
 parvaneh unwrap wrapped.npy --weight coherence.npy -o out.npy
@@ -251,11 +254,13 @@ raw input, `--shape`.
 
 For `ls` a mask is simply converted into a 0/1 weight, so `--mask` and
 `--weight` are the same kind of information; if you pass both, the weight wins.
-For the path-following methods (`quality-guided`, `goldstein`, `mask-cut`,
-`flynn`) a mask keeps the algorithm away from bad pixels and no weight is
-needed, because those methods build their own quality map. Masked pixels stay
-invalid in the output, which is exactly the case the `--invalid-fill` guard
-above exists for.
+For `reliability`, a pixel rated at zero confidence — because the mask is zero
+there, or because its weight is zero — is cut out of the tree entirely rather
+than assigned a value. For the path-following methods (`quality-guided`,
+`goldstein`, `mask-cut`, `flynn`) a mask keeps the algorithm away from bad
+pixels and no weight is needed, because those methods build their own quality
+map. Masked pixels stay invalid in the output, which is exactly the case the
+`--invalid-fill` guard above exists for.
 
 Two caveats about masks:
 
@@ -298,6 +303,7 @@ Two restrictions are worth memorising:
 
 ```bash
 parvaneh unwrap wrapped.npy --method flynn -o out.npy
+parvaneh unwrap wrapped.npy --method reliability --weight coherence.npy -o out.npy
 parvaneh unwrap wrapped.npy --method lp --p 1.1 --outer-iter 20 -o out.npy
 parvaneh unwrap wrapped.npy --method goldstein --max-cut-length 200 -o out.npy
 ```
@@ -305,7 +311,7 @@ parvaneh unwrap wrapped.npy --method goldstein --max-cut-length 200 -o out.npy
 | Option | Method | Meaning | Default |
 |---|---|---|---|
 | `--method` | all | which algorithm to run | `ls` |
-| `--backend` | `ls`, `quality-guided` | `auto`, `numpy`, `blas`, `numba`, `cython`, `cupy` | `auto` |
+| `--backend` | `ls`, `quality-guided`, `reliability` | `auto`, `numpy`, `blas`, `numba`, `cython`, `cupy` | `auto` |
 | `--p` | `lp` | norm exponent, between 1 and 2 | `1.2` |
 | `--outer-iter` | `lp` | reweighting iterations | `12` |
 | `--inner-iter` | `lp` | least-squares iterations per reweighting | `100` |
@@ -405,6 +411,7 @@ method-specific block:
 |---|---|
 | `ls` | `weights` (`uniform`, `mask`, or `custom`), `iterations`, `relative_residual`, `converged` |
 | `quality-guided` | `quality` |
+| `reliability` | `pixels`, `edges`, `merges`, `discarded`, `components` |
 | `goldstein`, `mask-cut` | `cut_pixels` |
 | `flynn` | `iterations` |
 | `lp` | `p`, `outer_iterations`, `inner_iterations`, `objective`, `relative_change` |
@@ -412,7 +419,10 @@ method-specific block:
 Two of these are worth watching in practice: `converged: false` for `ls` means
 `--max-iter` stopped the solver early (raise it or relax `--tol`), and a large
 `cut_pixels` for `goldstein` or `mask-cut` means the cut set grew large, which
-is a warning sign that the residue density is high.
+is a warning sign that the residue density is high. For `reliability`, `merges`
+and `components` describe the tree the solver built: `components` is the number
+of disconnected sets of usable pixels, so a value above one means the mask cut
+the scene into pieces that were each unwrapped with their own offset.
 
 ## Output, exit codes, and scripting
 
@@ -455,7 +465,7 @@ from parvaneh import phase_residues
 print(np.count_nonzero(phase_residues(np.load('wrapped.npy'))))
 "
 
-for m in ls lp goldstein mask-cut flynn quality-guided; do
+for m in ls lp goldstein mask-cut flynn quality-guided reliability; do
     parvaneh unwrap wrapped.npy --method "$m" -q -o "out-$m.npy"
 done
 ```
@@ -463,7 +473,10 @@ done
 Because every result is offset-aligned by default, the differences between the
 files now mean something. `flynn` and `lp` preserve genuine $2\pi$ cliffs;
 `ls` smooths them; a large disagreement concentrated along a line usually means
-residues along a real discontinuity.
+residues along a real discontinuity. `reliability` sits with the path-following
+family here: it joins pixels along a maximum-reliability tree, so a residue pair
+is absorbed where its two ends are fused together instead of being integrated
+into a global field.
 
 ## Troubleshooting
 
@@ -478,7 +491,8 @@ residues along a real discontinuity.
 | output is wildly offset from what you expected | you used `--center none`; the default `circular` aligns to the input |
 | `parvaneh` prints nothing and does nothing | pass an input file, or `--method list`; with no arguments it prints help |
 | huge runtime on a big scene | reduce iterations: `--tol 1e-6 --max-iter 40`; or use `quality-guided` |
-| unwrapped image looks striped/folded | too many residues for the algorithm: mask the bad region, then try `ls` with a weight or `mask-cut` |
+| unwrapped image looks striped/folded | too many residues for the algorithm: mask the bad region, then try `ls` with a weight, `reliability` with a weight, or `mask-cut` |
+| `--info` reports many `discarded` edges for `reliability` | that is normal: the discarded edges are the cycles a tree cannot use. A large `components` count instead means the mask split the scene into disconnected pieces |
 
 ## Related documentation
 

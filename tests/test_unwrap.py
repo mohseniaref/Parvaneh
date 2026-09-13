@@ -4,7 +4,7 @@ from parvaneh import (available_backends, discontinuity_map, flynn_unwrap,
                       goldstein_unwrap, make_synthetic, mask_cut_unwrap,
                       max_gradient_quality, phase_residues,
                       quality_guided_unwrap, read_raw_raster, rmse_aligned,
-                      surface_difference, unwrap, unwrap_lp,
+                      surface_difference, unwrap, unwrap_lp, wrap_phase,
                       wrapped_gradients, write_raw_raster)
 
 
@@ -78,6 +78,57 @@ def test_masked_least_squares_ignores_a_hole():
 def test_max_iter_must_be_positive():
     with pytest.raises(ValueError, match="max_iter"):
         unwrap(np.zeros((4, 4)), max_iter=0)
+
+
+def test_one_dimensional_least_squares_recovers_a_profile():
+    truth = 0.3 * np.arange(50)
+    result = unwrap(wrap_phase(truth), backend="numpy")
+    assert np.allclose(result - result[0], truth - truth[0], atol=1e-12)
+
+
+def test_three_dimensional_least_squares_recovers_a_volume():
+    """The Poisson solve works on a volume exactly as it does on an image."""
+    y, x = np.mgrid[0:24, 0:31].astype(float)
+    bump = 8.0 * np.exp(-(((x - 15) / 7.0) ** 2 + ((y - 11) / 7.0) ** 2))
+    truth = ((0.12 * x + 0.05 * y)[:, :, None] + bump[:, :, None]
+             + 0.15 * np.arange(6)[None, None, :])
+
+    result, info = unwrap(wrap_phase(truth), backend="numpy",
+                          return_info=True)
+    assert result.shape == truth.shape
+    assert info.relative_residual < 1e-10
+    assert rmse_aligned(result, truth) < 1e-12
+
+
+def test_three_dimensional_solve_reports_the_engine_actually_used():
+    """The compiled 2-D stencils cannot be used, and the report says so."""
+    truth = np.zeros((8, 9, 5))
+    truth += np.arange(5)[None, None, :]
+    expected = {"numpy": "numpy", "blas": "blas",
+                "numba": "numpy", "cython": "numpy"}
+    for backend in CPU_BACKENDS:
+        result, info = unwrap(wrap_phase(truth), backend=backend,
+                              return_info=True)
+        assert info.backend == expected[backend]
+        assert np.isfinite(result).all()
+
+
+def test_identical_slices_reduce_to_the_two_dimensional_answer():
+    truth, wrapped, _ = make_synthetic((24, 31), noise=0)
+    volume = np.repeat(wrapped[:, :, None], 4, axis=2)
+
+    joint = unwrap(volume, backend="numpy")
+    single = unwrap(wrapped, backend="numpy")
+
+    assert np.abs(joint - joint[:, :, :1]).max() < 1e-12
+    assert rmse_aligned(joint[:, :, 0], single) < 1e-10
+    assert rmse_aligned(joint[:, :, 0], truth) < 1e-10
+
+
+def test_axes_with_a_single_sample_are_rejected():
+    for bad in (np.array(5.0), np.zeros((1, 5)), np.zeros((5, 3, 1))):
+        with pytest.raises(ValueError, match="at least 2 samples"):
+            unwrap(bad)
 
 
 def test_exhausted_iterations_report_nonconvergence():

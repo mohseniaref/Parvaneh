@@ -50,6 +50,9 @@ not distribute the book, its original source code, or its supplied datasets.
 - Quality-guided mask cuts
 - Flynn minimum-discontinuity unwrapping
 - Robust minimum-$L^p$ reconstruction with IRLS
+- Reliability sorting into a maximum-reliability tree
+- Least-squares and reliability solvers accept any number of axes, so a stack or
+  a volume can be unwrapped in one piece instead of slice by slice
 - Synthetic InSAR-like tests and correctness metrics
 - Warmed identical-input performance benchmarks
 

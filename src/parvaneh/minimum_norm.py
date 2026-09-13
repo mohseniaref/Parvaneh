@@ -21,10 +21,11 @@ class LpInfo:
 
 def _solve_edge_weighted(gx, gy, wx, wy, initial, max_iter, tol):
     """PCG solve with independent horizontal and vertical edge weights."""
-    rhs = _divergence(wx * gx, wy * gy)
+    # Fields are ordered by axis: rows first, then columns.
+    rhs = _divergence((wy * gy, wx * gx))
     phi = np.asarray(initial, dtype=np.float64).copy()
     phi -= phi.mean()
-    residual = rhs - _apply_q_numpy(phi, wx, wy)
+    residual = rhs - _apply_q_numpy(phi, (wy, wx))
     norm0 = np.linalg.norm(residual)
     if norm0 == 0:
         return phi, 0
@@ -35,7 +36,7 @@ def _solve_edge_weighted(gx, gy, wx, wy, initial, max_iter, tol):
         z = idctn(dctn(residual) / scale)
         rz = float(np.vdot(residual, z))
         direction = z.copy() if direction is None else z + (rz / previous) * direction
-        q = _apply_q_numpy(direction, wx, wy)
+        q = _apply_q_numpy(direction, (wy, wx))
         denominator = float(np.vdot(direction, q))
         if not math.isfinite(denominator) or abs(denominator) < np.finfo(float).tiny:
             break

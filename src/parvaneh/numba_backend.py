@@ -22,6 +22,47 @@ def apply_q(p, wx, wy):
 
 
 @njit(cache=True)
+def reliability_merge(node_a, node_b, wrap_index, size, parent, shift):
+    """Merge the edges of a reliability-sorted list into spanning trees.
+
+    ``node_a``, ``node_b`` and ``wrap_index`` are the edges in visiting order.
+    ``parent``, ``shift`` and ``size`` are the mutable union-find state: for
+    every node ``x``, ``shift[x]`` counts how many whole turns must be added
+    when stepping from ``x`` to ``parent[x]``.  Integer turns keep the merge
+    exact, so this kernel and the Python fallback agree bit for bit.
+    """
+    merges = 0
+    discarded = 0
+    for index in range(node_a.size):
+        a = node_a[index]
+        b = node_b[index]
+        turns_a = 0
+        root_a = a
+        while parent[root_a] != root_a:
+            turns_a += shift[root_a]
+            root_a = parent[root_a]
+        turns_b = 0
+        root_b = b
+        while parent[root_b] != root_b:
+            turns_b += shift[root_b]
+            root_b = parent[root_b]
+        if root_a == root_b:
+            discarded += 1
+            continue
+        relation = turns_a - turns_b - wrap_index[index]
+        if size[root_a] >= size[root_b]:
+            parent[root_b] = root_a
+            shift[root_b] = relation
+            size[root_a] += size[root_b]
+        else:
+            parent[root_a] = root_b
+            shift[root_a] = -relation
+            size[root_b] += size[root_a]
+        merges += 1
+    return merges, discarded
+
+
+@njit(cache=True)
 def _frontier_insert(result, saved_priority, state, priorities, indices,
                      count, max_frontier, index, candidate, priority,
                      minimum_priority):

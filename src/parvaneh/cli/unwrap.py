@@ -38,6 +38,7 @@ from ..minimum_norm import unwrap_lp
 from ..path_following import quality_guided_unwrap
 from ..quality import (derivative_variance_quality, max_gradient_quality,
                        pseudocorrelation_quality)
+from ..reliability import reliability_unwrap
 from ..raster import RASTER_SUFFIXES, RasterError, read_raster, write_raster
 from .base import CommandParser, log
 
@@ -47,6 +48,7 @@ from .base import CommandParser, log
 METHODS = (
     ("ls", "weighted least squares (Ghiglia-Romero); smooth, globally optimal"),
     ("quality-guided", "best-first traversal from the most reliable edges"),
+    ("reliability", "reliability sorting into a maximum-reliability tree"),
     ("goldstein", "Goldstein expanding-box branch cuts"),
     ("mask-cut", "branch cuts placed from an unwrapped quality-guided mask"),
     ("flynn", "Flynn minimum-discontinuity network"),
@@ -60,6 +62,7 @@ METHODS = (
 METHOD_BACKENDS = {
     "ls": ("numba", "cython", "blas", "numpy", "cupy"),
     "quality-guided": ("numba", "python"),
+    "reliability": ("numba", "python"),
     "goldstein": (),
     "mask-cut": (),
     "flynn": (),
@@ -84,6 +87,9 @@ examples:
 
   # low-coherence data: hide unreliable pixels behind a validity mask
   parvaneh unwrap wrapped.npy --method quality-guided --mask valid.npy -o out.npy
+
+  # a noisy image that carries residues: reliability sorting avoids them
+  parvaneh unwrap noisy.npy --method reliability -o unwrapped.npy
 
   # georeferenced raster in and out, keeping the geotransform and the CRS
   parvaneh unwrap wrapped.tif --method goldstein -o unwrapped.tif
@@ -133,8 +139,8 @@ examples:
                                           "pixel is never valid)")
     aux_group.add_argument("--mask-dtype", default="<f4",
                            help="dtype of a headerless raw --mask (default: <f4)")
-    aux_group.add_argument("--weight", help="nonnegative least-squares weight "
-                                            "raster (--method ls only)")
+    aux_group.add_argument("--weight", help="nonnegative weight raster "
+                                            "(--method ls or reliability)")
     aux_group.add_argument("--weight-dtype", default="<f4",
                            help="dtype of a headerless raw --weight (default: <f4)")
 
@@ -510,6 +516,13 @@ def _run_method(args, phase, backend, mask, weight):
         quality = _quality_from_args(args, phase, method, backend)
         return quality_guided_unwrap(phase, quality, mask,
                                      backend=backend), {"quality": args.quality}
+
+    if method == "reliability":
+        # The reliability rating already folds in a mask and a weight map, so
+        # both options keep their usual meaning here.
+        result, info = reliability_unwrap(phase, mask, weight, backend=backend,
+                                          return_info=True)
+        return result, dataclasses.asdict(info)
 
     if method == "goldstein":
         result, cuts = goldstein_unwrap(phase, mask,

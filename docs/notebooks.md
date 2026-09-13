@@ -1,6 +1,6 @@
 # Notebooks
 
-Four Jupyter notebooks ship with Parvaneh. They are the teaching and
+Five Jupyter notebooks ship with Parvaneh. They are the teaching and
 reproducibility layer of the project: each one is fully self-contained, needs no
 external data, and produces every figure it shows from code in the notebook
 itself.
@@ -10,10 +10,11 @@ itself.
 | [`chapter_01_introduction.ipynb`](../notebooks/chapter_01_introduction.ipynb) | introductory | what wrapping is, why unwrapping is needed, and how the one-dimensional rule fails |
 | [`chapter_02_line_integrals_residues.ipynb`](../notebooks/chapter_02_line_integrals_residues.ipynb) | intermediate | path independence, discrete curl, residues, and the irrotational/rotational decomposition |
 | [`independent_synthetic_examples.ipynb`](../notebooks/independent_synthetic_examples.ipynb) | practical | every public algorithm family on one deterministic synthetic scene |
+| [`three_dimensional_unwrapping.ipynb`](../notebooks/three_dimensional_unwrapping.ipynb) | advanced | stacks and volumes: does the third axis actually help, measured against per-slice unwrapping and an independent baseline |
 | [`synthetic_insar_generator.ipynb`](../notebooks/synthetic_insar_generator.ipynb) | advanced | building a complete synthetic InSAR scene with exact ground truth |
 
 The two `chapter_*` notebooks follow the exposition of Ghiglia and Pritt
-(1998); all code in them is original. The other two build the project's own
+(1998); all code in them is original. The other three build the project's own
 synthetic data, which is what makes quantitative statements about accuracy
 possible at all.
 
@@ -26,10 +27,17 @@ jupyter lab notebooks/
 
 The notebooks need `numpy`, `scipy`, `matplotlib` and `jupyterlab`; Numba and
 Cython are optional and their absence only changes the speed comparisons.
-Chapter 1 also compares against `skimage.restoration.unwrap_phase` when
-scikit-image is installed and simply skips that comparison when it is not. All
-random values come from seeded NumPy generators, so a fresh run reproduces the
-same figures.
+Chapter 1 and the 3-D notebook also compare against
+`skimage.restoration.unwrap_phase` when scikit-image is installed and simply skip
+that comparison when it is not.
+
+Every random value the notebooks draw themselves comes from a seeded NumPy
+generator, so a fresh run reproduces the same figures. One caveat applies to the
+scikit-image comparison only: its higher-dimensional solver keeps a random
+stream inside the compiled library that advances with each call, and the `seed`
+argument does not redirect it. Repeated calls therefore agree to a few
+hundredths of a radian rather than exactly, and the notebooks quote that
+baseline to two decimals. Results from `parvaneh` are unaffected.
 
 Each notebook starts with a short bootstrap cell that puts the repository's
 `src/` directory on `sys.path`. That is what lets the notebooks import
@@ -49,7 +57,7 @@ if (SRC / 'parvaneh').is_dir() and str(SRC) not in sys.path:
 It works when the notebook is run from the repository root and from the
 `notebooks/` directory, and it is a harmless no-op after
 `python -m pip install -e .`, because then `parvaneh` is already importable.
-The other three notebooks use an equivalent spelling of the same two lines.
+The other four notebooks use an equivalent spelling of the same two lines.
 
 ## Contents
 
@@ -80,6 +88,19 @@ additive noise — run through every public algorithm family, followed by
 reproducibility checks. This is the notebook to read if you want to know how
 the families differ in practice, and the one to copy from if you want a
 template for your own comparison.
+
+### Three-dimensional unwrapping
+
+Answers one question with measurements instead of opinion: when a wrapped volume
+is available, does solving it jointly beat unwrapping the slices one at a time?
+It first defines the error measures it needs — a per-slice offset is a
+legitimate freedom of the problem, so a plain RMSE would punish the honest
+answer — then reproduces the classic stack failure in which every slice looks
+perfect on its own and the volume does not, and finally sweeps the noise level
+for least squares, reliability sorting and the scikit-image baseline. It also
+measures what the joint solve costs, and it states plainly where a comparison is
+only good to limited precision: the scikit-image baseline is not
+bit-reproducible.
 
 ### Synthetic InSAR generator
 
@@ -119,4 +140,5 @@ author's machine is not reproducible.
 
 - [`algorithms.md`](algorithms.md) — the algorithms the synthetic notebooks exercise.
 - [`cli.md`](cli.md) — the same algorithms from the command line.
+- [`performance.md`](performance.md) — what the notebooks' timing cells measure.
 - [`validation.md`](validation.md) — how the notebooks are checked automatically.

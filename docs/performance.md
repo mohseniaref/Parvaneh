@@ -39,3 +39,36 @@ different hardware:
 ```bash
 python benchmarks/benchmark_path_following.py --rows 257 --cols 257 --repeat 5
 ```
+
+## Volumes and reliability sorting
+
+`benchmarks/benchmark_nd.py` covers the two families that accept an
+$n$-dimensional array. It builds a wrapped volume in memory, then unwraps it
+twice: once as a whole and once slice by slice with the same solver. It reports
+aligned RMSE, the fraction of samples a whole fringe off, the spread of
+per-slice offsets, local error, and the measured wall-clock ratio between the
+two runs. The reliability merge is timed in both its compiled and its Python
+form. Needs no raster and no GPU:
+
+```bash
+python benchmarks/benchmark_nd.py --rows 64 --cols 64 --slices 12 --noise 0.9
+```
+
+What it shows, at the sizes in the third notebook:
+
+- The joint solve costs about **twice** the slice-by-slice loop, not ten times.
+  The work is the same with one more axis of neighbours: a 48x48x8 volume has
+  52 224 candidate edges versus 36 096 for the eight independent slices, so the
+  factor follows from the extra inter-slice pairs and from sorting one long list
+  instead of eight short ones.
+- The error improves out of all proportion to that cost once noise exists: at
+  $\sigma = 0.9$ rad the joint reliability solve is roughly 3x more accurate
+  than per-slice reliability sorting, and the per-slice offsets that plague the
+  independent runs disappear (spread 2.7 rad down to 0.02 rad).
+- The compiled reliability merge is roughly an order of magnitude faster than
+  the Python reference loop on the same volume, and the two are bit-identical.
+
+Absolute numbers here are small (milliseconds for a volume of this size) and
+dominated by Numba's compile time on the first call, so the benchmark discards
+one warm-up call before timing. Rerun it on your own hardware rather than
+quoting these figures.
