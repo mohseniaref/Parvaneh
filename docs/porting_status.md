@@ -15,6 +15,7 @@ identify the mathematical family, not a runtime dependency.
 | Quality-guided mask cuts | `mask_cut_unwrap` | Independent mask/cut implementation | Smooth synthetic recovery and cut validation |
 | Flynn minimum discontinuity | `flynn_unwrap` | Independent region optimization | Phase congruence and deterministic convergence tests |
 | Minimum-$L^p$ norm | `unwrap_lp` | IRLS with matrix-free weighted solves | $p=2$ equivalence, finite objective, iteration tests |
+| Minimum-cost flow | `network_flow_unwrap` | Dual-network flow solved by successive shortest augmentations | Optimality cross-check against `scipy.optimize.linprog`, synthetic charge recovery, mask and weight behaviour |
 | Difference/jump diagnostics | `surface_difference`, `discontinuity_map` | Native NumPy | Deterministic offset and jump tests |
 
 “Independent” means the installed package executes only code distributed in
@@ -27,5 +28,8 @@ variants) are exercised on 1-D, 2-D and 3-D input. A volume built by repeating
 one slice must reproduce the 2-D answer slice for slice, the accepted
 reliability edges must form a spanning tree with exactly `pixels - 1` merges per
 region, and the compiled and reference backends must agree bit for bit. The
-remaining families are validated as 2-D implementations.
+remaining families, including the minimum-cost flow solver, are
+validated as 2-D implementations. The flow solver is checked against the
+optimum that a linear program on the same network finds, in both cost
+modes, so its own answer is verified rather than only its plausibility.
 

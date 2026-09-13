@@ -84,10 +84,14 @@ rather than take it on faith.
 ### Independent synthetic examples
 
 One deterministic experiment — a smooth ramp with two Gaussian bumps and
-additive noise — run through every public algorithm family, followed by
-reproducibility checks. This is the notebook to read if you want to know how
-the families differ in practice, and the one to copy from if you want a
-template for your own comparison.
+additive noise — run through every public algorithm family, followed by a look
+inside the flow solver's own report and a set of reproducibility checks. This is
+the notebook to read if you want to know how the families differ in practice,
+and the one to copy from if you want a template for your own comparison. The
+flow section is also the shortest honest demonstration of how the solver's
+bookkeeping works: it prints the residue charge, the network size, the number of
+augmentations, and the imbalance the ground node had to absorb, and the reader
+can check those four numbers against each other.
 
 ### Three-dimensional unwrapping
 

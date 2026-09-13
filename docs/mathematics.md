@@ -26,9 +26,11 @@ the wording on this page were written for this project.
 10. [Reliability sorting: a maximum spanning forest](#10-reliability-sorting-a-maximum-spanning-forest)
 11. [Path following and branch cuts](#11-path-following-and-branch-cuts)
 12. [Minimum discontinuity](#12-minimum-discontinuity)
-13. [Any number of dimensions](#13-any-number-of-dimensions)
-14. [What each method guarantees](#14-what-each-method-guarantees)
-15. [One worked experiment with all seven methods](#15-one-worked-experiment-with-all-seven-methods)
+13. [Minimum-cost flow: unwrapping as a network](#13-minimum-cost-flow-unwrapping-as-a-network)
+14. [Any number of dimensions](#14-any-number-of-dimensions)
+15. [What each method guarantees](#15-what-each-method-guarantees)
+16. [One worked experiment with all ten variants](#16-one-worked-experiment-with-all-ten-variants)
+17. [When the noise is strong: a discriminating experiment](#17-when-the-noise-is-strong-a-discriminating-experiment)
 
 ---
 
@@ -109,8 +111,8 @@ error = rmse_aligned(result, truth)        # removes the mean difference first
 ```
 
 It subtracts the *mean* difference, which removes a global constant but
-deliberately does **not** remove per-island offsets. Chapter 15 shows the two
-numbers side by side for all seven methods. A result with a perfect
+deliberately does **not** remove per-island offsets. Chapter 16 shows the two
+numbers side by side for all ten variants. A result with a perfect
 wrap-preservation number and a large aligned error is not "wrong": it is a
 different branch of the same measurement.
 
@@ -608,7 +610,7 @@ edges that rating induces, merge in that order — and the two-dimensional
 sorted/region-growing scheme are Herráez, Burton, Lalor & Gdeisat (2002).
 Kruskal's algorithm is Kruskal (1956); union–find with path compression is
 Tarjan (1975). The extension of the same recipe to volumes is Abdul-Rahman
-*et al.* (2005, 2007), which is what section 13 benchmarks; their 2009 paper
+*et al.* (2005, 2007), which is what section 14 benchmarks; their 2009 paper
 handles the singularity loops a best-path order can otherwise meet, and that
 remedy is not implemented here. The implementation in
 [`reliability.py`](../src/parvaneh/reliability.py) is a direct transcription of
@@ -623,7 +625,7 @@ unreliability from the four **second** differences in its $3\times3$
 neighbourhood, squared and summed, and give an edge the **sum** of its two
 endpoints' values, sorted in the opposite sense. What is taken from them is the
 sorting scheme, not the printed formula; see
-[`references.md`](references.md), entry 10.
+[`references.md`](references.md), entry 11.
 
 ## 11. Path following and branch cuts
 
@@ -672,8 +674,17 @@ when it is not adjacent to a charge and its removal does not disconnect the cut
 Both methods report values in *cycles* internally. They build the cycle field
 $((\psi+\pi)/2\pi) \bmod 1$, integrate it, and multiply by $2\pi$ at the end;
 there is no `- pi` on the way back, so their raw output is offset by exactly
-$\pi$ relative to the measurement. This is a documented convention, not an
-error: the CLI's `--center circular` (the default) removes it, and the test
+$\pi$ relative to the measurement. That offset is an artefact of the cycle
+bookkeeping — a missing $-\pi$ on the way from cycles back to radians — not a
+property of the algorithm, and this project records it as a defect to be
+removed rather than as a convention to keep.
+
+The experiment of section 16 measures it: the deviation
+$\max|W(u)-\psi|$ of Goldstein, mask cuts and Flynn is $3.1416$ rad, that is
+$\pi$ to the last printed digit. Adding $\pi$ to their output removes it
+except for rounding ($6\times10^{-6}$ rad for Goldstein and mask cuts,
+$5\times10^{-7}$ rad for Flynn). Until the bookkeeping is corrected, the CLI's
+`--center circular` (the default) removes the offset for you, and the test
 suite aligns the median offset, exactly as section 2 recommends. See
 [`cli.md`](cli.md) for the offset table and
 [`algorithms.md`](algorithms.md) for the per-backend notes.
@@ -722,13 +733,307 @@ nodes as they appear. Because a jump flips a facet's ambiguity, one flip can
 require several passes, and the return value reports the number of iterations
 (`return_iterations=True`) for exactly that reason. Its output obeys the same
 guarantee as the other path-following methods — wrap preservation, per-region
-offsets — and shares the $\pi$ convention of section 11.
+offsets — and shares the cycle-bookkeeping offset described in section 11.
+
+It is worth noticing what the objective above actually is. The quantity
+$\text{jump}_{ab}$ is the integer ambiguity $k_{ab}$ of equation (13.1): it
+counts the turns the measurement lost. So Flynn minimises the *same* linear
+objective as the network-flow method of section 13, over the same feasible set
+— the node-balance constraint written above is conservation, equation (13.3).
+The difference is how the optimum is found. Flynn improves an existing field
+by local increments and makes no claim of global optimality; the flow method
+solves the identical linear program exactly, and pays for it with a slower
+solve of its own. It is a useful comparison to run both on the same image,
+because any gap between them is the price of the heuristic.
 
 **Where this comes from.** Flynn (1997). The thinning, the sweep order, and the
 cost table are the ones the published algorithm describes; the implementation
 in [`flynn.py`](../src/parvaneh/flynn.py) is original Python.
 
-## 13. Any number of dimensions
+## 13. Minimum-cost flow: unwrapping as a network
+
+Sections 10 to 12 choose the whole turns step by step: a greedy merge, a
+best-first walk, a local sweep. This section writes *all* of the unknowns into a
+single optimisation problem on a graph and solves that problem exactly.
+
+### 13.1 The unknowns live on the edges
+
+Start from the difference identity of section 3. Across any two neighbouring
+pixels the true phase changes by the measured wrapped step plus some whole
+number of turns that the measurement could not see:
+
+$$u_b - u_a = g_{ab} + 2\pi k_{ab}, \qquad k_{ab} \in \mathbb{Z}. \qquad (13.1)$$
+
+The measurement does not say which integer, and every method in this page is a
+different way of choosing it. What makes the choice interesting is that the
+integers are not independent: added around a closed loop they must cancel the
+defect of the measured steps along that loop. For the four pixels of one cell
+that statement is the residue of section 4 again,
+
+$$k^{\rightarrow}_{i,j} + k^{\downarrow}_{i,j+1} - k^{\rightarrow}_{i+1,j}
+- k^{\downarrow}_{i,j} = -r_{i,j}, \qquad (13.2)$$
+
+where $r_{i,j}$ is the charge and $k^{\rightarrow}_{i,j}$,
+$k^{\downarrow}_{i,j}$ are the integers on the right step and on the down step
+leaving pixel $(i,j)$.
+
+If every charge is zero, $k \equiv 0$ satisfies (13.2) everywhere and there is
+nothing left to decide. If a charge is non-zero, (13.2) cannot hold around that
+cell for *any* integers, and something has to give. Which thing gives is what
+separates the families:
+
+* least squares (sections 5 to 8) lets the **measurements** give: it bends the
+  steps until the loops close;
+* the cut methods (sections 11 and 12) lets the **loops** give: it cuts the
+  image so that the offending loops no longer exist;
+* the flow family keeps every measured step exactly as measured and lets the
+  **integers** give; the turns are free to be placed anywhere, but each one is
+  paid for.
+
+### 13.2 The dual network
+
+Costantini (1998) noticed that (13.2) has the shape of a flow conservation law.
+Read it that way and the nodes of the optimisation problem turn out to be
+*cells*, not pixels.
+
+* **Nodes.** One node for each $2\times2$ block of four valid pixels, plus one
+  extra **ground** node that stands for "outside the data". A cell touching a
+  masked pixel does not exist, and is identified with the ground.
+* **Arcs.** One arc per pixel edge, carrying the integer $k$ of (13.1) as its
+  flow. An arc is oriented by turning its pixel step a quarter turn, the *same*
+  turn for both families:
+
+  | pixel step | arc runs | from | to |
+  | --- | --- | --- | --- |
+  | right: row $i$, columns $j \rightarrow j+1$ | along a row of cells | cell $(i,j)$ | cell $(i-1,j)$ |
+  | down: rows $i \rightarrow i+1$, column $j$ | along a column of cells | cell $(i,j-1)$ | cell $(i,j)$ |
+
+  A pixel edge that has a missing cell on one side becomes an arc between the
+  remaining cell and the ground. There is therefore no separate family of
+  "border arcs": the arcs that meet the ground are ordinary pixel edges that
+  happen to lie on the edge of the valid area.
+* **Supplies.** Every existing cell demands a net inflow of $r_{i,j}$, and the
+  ground absorbs whatever remains. Conservation at cell $(i,j)$ is then exactly
+  (13.2), because the four arcs around a cell are its four pixel steps, and the
+  ground node's own balance is minus the sum of the cell balances, so the whole
+  system can always be satisfied.
+
+**The objective.** Give every arc a price $c_e \ge 0$ and ask for the cheapest
+flow that respects all the conservation laws,
+
+$$\min \sum_e c_e\,|k_e|. \qquad (13.3)$$
+
+This is not a proxy for the quantity we care about. Equation (13.3) *is* the
+weighted total discontinuity of the answer: every unit of $|k_e|$ is one whole
+turn by which the corrected step departs from the measured step, and $c_e$ says
+what one turn costs in that place; section 7 explains why giving up on an edge
+should cost something. The only question left is where the prices come from.
+
+**Why the optimum is a whole number.** The constraint matrix of a network is
+**totally unimodular**: every square sub-matrix formed from its rows and columns
+has determinant $0$, $+1$, or $-1$. The intimidating part of (13.2) is that $k$
+was declared to be an integer, and the integrality theorem for such matrices
+says that the declaration costs nothing — the linear program in which $k$ is
+allowed to be any real number already has an integer optimum. So the problem can
+be solved as a linear program, with no rounding, no branching, and no search,
+and the answer that comes out is the exact optimum of (13.3). This is the sense
+in which this family is *exact* while Goldstein and Flynn are *heuristics*: the
+difference is a theorem, not a tuning.
+
+### 13.3 Prices, and how the cheapest flow is found
+
+The prices follow the simple rule used by SNAPHU (Chen & Zebker 2002):
+
+1. Turn the confidence into an integer weight,
+   $\operatorname{round}\!\left(1000 \cdot
+   \operatorname{clip}(\text{confidence}, 0, 1)\right)$, and never let a
+   non-zero confidence be worth less than 1.
+2. An arc costs the **smaller** of the weights of its two end pixels: an edge is
+   only as trustworthy as its weaker side.
+3. Confidence exactly 0 means "do not trust this pixel at all", and removes it
+   from the network: the four cells that touch it do not exist, so its edges
+   become ground arcs. Crossing costs nothing there, which is how a residue that
+   cannot be paired inside the array escapes through a masked strip or across
+   the border.
+
+The optimum of (13.3) is found by **successive shortest augmenting paths**, the
+classical algorithm for this problem (Ahuja, Magnanti & Orlin 1993,
+Algorithm 9.5):
+
+* start from zero flow and keep the *excess* of every node, the amount by which
+  its balance is still unsatisfied;
+* find the cheapest route from a node with surplus to a node with deficit using
+  Dijkstra's algorithm on the residual network, with prices *reduced* by a
+  vector of node potentials; push one unit along that route, which settles two
+  units of imbalance;
+* because every original price is non-negative, the potentials may start at
+  zero, and because the prices are integers the potentials stay exact integers.
+  There is no floating-point comparison and no tie tolerance, and the algorithm
+  stops at the true optimum.
+
+The ground node guarantees that the next unit always has somewhere to go, so the
+only possible failures are a programming error or an exhausted iteration cap.
+What decides the run time is the number of augmentations, and that number is not
+the number of pixels: every unit of flow starts at a residue, so the count is
+essentially half the total charge — the measurement in section 13.6 confirms
+this, and it is also why a clean scene with no residues needs no augmentation at
+all and returns $k \equiv 0$. The word *essentially* is doing real work: the
+charges of a closed array need not cancel, because their sum is the net number
+of whole turns that the measured gradient accumulates around the outer boundary
+of the array, and that leftover is what the ground node absorbs and what the
+report calls `ground_imbalance`. A scene with $492$ units of total charge and a
+ground imbalance of $2$ therefore needs $(492 + 2)/2 = 247$ augmentations, not
+$246$, and it is the `augmentations` field — not half the `residues` field —
+that sets the run time when the two disagree.
+
+The alternative objective `cost="quadratic"` replaces $c_e|k_e|$ by
+$c_e k_e^2$, which dislikes one large jump more than several small ones. The
+same solver is used, with the marginal price of the $n$-th unit on an arc equal
+to $c_e (2n-1)$; that marginal-price rule is the standard treatment of convex
+arc prices, and convexity is what keeps it correct. What does *not* carry over
+is the integrality argument of section 13.2, which is specific to the linear
+objective, so the quadratic mode is the weaker of the two guarantees.
+
+### 13.4 From a flow back to a field
+
+The flow is the answer, but users want a field. Once the integers are known,
+every measured step is corrected to $g + 2\pi k$, and by construction those
+corrected steps are curl free inside each valid region: the loops that used to
+be inconsistent now contain the turns that pay for them. A breadth-first walk
+from the first valid pixel of a region therefore integrates the steps exactly —
+any path inside the region gives the same answer, so one walk per region is
+enough — and each region receives its own arbitrary additive constant. That is
+ambiguity (b) of section 2, no longer a footnote but a visible property of the
+output. Pixels outside the mask are returned as `nan`, and the report counts the
+regions.
+
+Three properties of the result are worth remembering, because they are visible
+in the examples below.
+
+* The objective value is unique; the **field is not**. Different sets of
+  integers can cost exactly the same, and the solver returns the first of them
+  it finds.
+* The optimum is not asked to be smooth. Where the data really do contain a
+  discontinuity, the cheapest flow puts the jump there, often as a compact cut,
+  instead of spreading it over the image in the way least squares must.
+* Two regions separated by a mask are unwrapped independently: no arc connects
+  them, so the flow cannot compare them and their relative offset is arbitrary.
+  Section 16 measures how large that arbitrariness can be.
+
+### 13.5 Two worked examples
+
+**A residue that cannot be paired.** The $2\times2$ array of section 4,
+
+$$\psi = \begin{bmatrix} 0 & \pi/2 \\ -\pi/2 & \pi \end{bmatrix},$$
+
+has one cell, whose charge is $+1$, so its single conservation law (13.2) says
+that one whole turn must be spent on one of its four sides. The four arcs of
+that cell all lead to the ground — it is the only cell, so no cell lies behind
+any of its sides — and all four cost the same 1000 units. The four choices are
+therefore equally cheap, and the solver takes the first one it examines, the
+down step from $(0,0)$ to $(1,0)$:
+
+| quantity | value |
+| --- | --- |
+| pixels / nodes / arcs | 4 / 2 / 4 |
+| residues, augmentations | 1, 1 |
+| `ground_imbalance` | 1 |
+| `max_jump` (whole turns on one edge) | 1 |
+| `total_cost` (internal units) | 1000 |
+| field $u$ | $\begin{bmatrix} 0 & \pi/2 \\ 3\pi/2 & \pi \end{bmatrix}$ |
+| largest $\left\|\,W(u - \psi)\,\right\|$ | $2.4\times10^{-16}$ rad |
+
+The returned field differs from the measurement by one whole turn on that one
+step and agrees with it modulo $2\pi$ everywhere else. No other placement of the
+turn can cost less, and three other placements cost exactly the same, which is
+the first thing a user of this family has to accept: the flow gives *a* correct
+answer, and the price of every answer it could have given is available in the
+report.
+
+**A dipole, and the ground left unused.** The $3\times3$ vortex of section 4,
+
+$$\psi = \frac{\pi}{2}
+\begin{bmatrix} 0 & 0 & -1 \\ 0 & 1 & 1 \\ -1 & 1 & 1 \end{bmatrix},$$
+
+has two cells of charge, $+1$ and $-1$, a short dipole. Here all four cells of
+the grid exist, so no arc meets the ground and the ground balance is zero. The
+dipole forms one loop, and the solver needs a single augmentation to satisfy it:
+
+| quantity | value |
+| --- | --- |
+| pixels / nodes / arcs | 9 / 5 / 12 |
+| residues, augmentations | 2, 1 |
+| `ground_imbalance` | 0 |
+| `max_jump` | 1 |
+| `total_cost` | 2000 |
+| field $u$ | $\frac{\pi}{2}\begin{bmatrix} 0 & 0 & -1 \\ 0 & -3 & -3 \\ -1 & -3 & -3\end{bmatrix}$ |
+| largest $\left\|\,W(u - \psi)\,\right\|$ | $2.4\times10^{-16}$ rad |
+
+Two arcs carry one unit each — the down step $(0,1)\to(1,1)$ and the right step
+$(1,0)\to(1,1)$ — and together they form the top-left corner of the $2\times2$
+block $\{(1,1),(1,2),(2,1),(2,2)\}$. Correcting those two steps by $-2\pi$ makes
+every other loop in the array consistent, so the walk of section 13.4 shifts
+that whole block by $-2\pi$ and returns a field whose departure from the
+measurement is $0$ everywhere outside it. For a vortex of this size, the exact
+optimum is the visual answer: one compact cut around the block that the data say
+is rotated.
+
+### 13.6 What it costs
+
+The number that decides the run time is the total absolute charge, not the
+number of pixels, because every unit of charge is one augmentation and each
+augmentation runs Dijkstra on the dual network. The table below is the output of
+`benchmarks/benchmark_mcf.py`: a square array from `make_synthetic` with noise
+scale $1$ rad together with that generator's own coherence weight, median of
+three runs on one core of an Intel Core i7-8650U.
+
+| grid | pixels | charge | nodes | arcs | augmentations | `max_jump` | linear (s) | quadratic (s) | RMSE (rad) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| $32^2$ | 1024 | 134 | 962 | 1984 | 67 | 2 (1) | 0.040 | 0.045 | 1.243 (1.238) |
+| $48^2$ | 2304 | 267 | 2210 | 4512 | 134 | 1 | 0.157 | 0.158 | 1.247 |
+| $64^2$ | 4096 | 440 | 3970 | 8064 | 220 | 1 | 0.422 | 0.473 | 1.190 |
+
+Two readings of that table. First, the augmentations are half the charge, as
+predicted — these synthetic scenes close on their own boundary, so the ground
+node stays unused — while the number of nodes and arcs grows with the area; it
+is the *product* of charge and nodes that sets the time — $1.3\times10^5$, then
+$5.9\times10^5$, then $1.75\times10^6$, against $0.040$, $0.157$ and $0.422$
+seconds. So a scene with three times the width and three times the charge is not
+three but roughly ten times slower, and the charge can be reduced by gaining
+coherence, not by gaining pixels. Second, both objectives return fields that
+differ by less than $10^{-13}$ rad from the measured steps modulo $2\pi$, and
+they differ from each other in RMSE by less than $0.01$ rad on these scenes: on
+noise the two objectives are nearly the same problem, and the quadratic one
+earns its extra care only when genuine discontinuities are expected. Repeating a
+cell of this table on the same laptop moves the median by 10 to 20 percent; the
+sweep in [`performance.md`](performance.md) carries the same rows out to
+$256^2$ and quotes the spread it found there.
+
+How does that sit next to the other families? Timings for the ten variants on
+one shared $64\times64$ scene (median of three warmed runs, same machine) are:
+least squares $0.001$ s, weighted least squares $0.006$ s, reliability sorting
+$0.023$ s, quality-guided $0.107$ s, Goldstein $0.113$ s, minimum $L^p$ norm
+$0.258$ s, minimum-cost flow $0.331$ s, weighted minimum-cost flow $0.411$ s,
+Flynn $0.414$ s, mask cuts $0.460$ s. The direct solvers and the sorter are
+effectively free, the exact flow solve costs a few hundred times the fast
+Poisson solve, and the flow family lands in the middle of the robust group:
+cheaper than mask cuts, level with Flynn, and — unlike either of them —
+carrying a proof that its answer is optimal.
+
+**Where this comes from.** The dual network, the cell conservation law, and the
+$\sum c_e|k_e|$ objective are Costantini (1998), whose network this section
+follows. The integer prices, the confidence handling, and the practical
+behaviour of large runs are described in Chen & Zebker (2002), the paper behind
+SNAPHU; SNAPHU itself uses a different network, with one node per pixel, and is
+cited here as a cross-check rather than as the construction used. The solver is
+Algorithm 9.5 of Ahuja, Magnanti & Orlin (1993), and the treatment of convex arc
+prices behind the quadratic mode is the same book. The implementation in
+`network_flow.py` is this page's own work: no source code from SNAPHU or from
+any other unwrapping package was copied, and the two worked examples above are
+reproduced by the test suite, which also re-derives the optimum from the
+returned field instead of trusting the reported total.
+
+## 14. Any number of dimensions
 
 Nothing in sections 5–7 is specific to two dimensions. Replace "row and column"
 by "axis $a = 1,\dots,d$" and everything holds:
@@ -769,7 +1074,7 @@ generalised here. The benchmark behind the table is
 [`benchmark_nd.py`](../benchmarks/benchmark_nd.py) and the notebook
 [`three_dimensional_unwrapping.ipynb`](../notebooks/three_dimensional_unwrapping.ipynb).
 
-## 14. What each method guarantees
+## 15. What each method guarantees
 
 | Python API | CLI | finds the answer by | wrap-preserving? | what happens to residues |
 | --- | --- | --- | --- | --- |
@@ -781,6 +1086,7 @@ generalised here. The benchmark behind the table is
 | `goldstein_unwrap` | `--method goldstein` | expanding boxes around each charge, then integrate away from the cuts | yes, modulo the documented $\pi$ convention | made consistent by the cut network |
 | `mask_cut_unwrap` | `--method mask-cut` | cuts grown from each charge along minimum-gradient paths | yes, modulo the $\pi$ convention | made consistent by the cut network |
 | `flynn_unwrap` | `--method flynn` | minimising the weighted discontinuity count | yes, modulo the $\pi$ convention | resolved as the cheapest jumps in the network |
+| `network_flow_unwrap` | `--method mcf` | the cheapest set of $2\pi$ jumps that leaves the wrapped field consistent | yes, exactly, with no convention to correct | charged to the flow, at the lowest total jump cost |
 
 "Wrap-preserving" means $W(u) = \psi$ for every valid pixel, so the answer
 still carries everything the measurement contained and any disagreement is
@@ -794,21 +1100,24 @@ least-squares family distributes its error as a smooth field over the whole
 image, which is easy to interpret statistically; the sorter concentrates it at
 the pixels it rated worst, which is easier to check against other data
 (coherence, a map of known faults); the cut methods concentrate it near the
-cuts, which are themselves a diagnostic you can plot. All three are honest
-answers to slightly different questions, and choosing between them is choosing
-which failure you can tolerate.
+cuts, which are themselves a diagnostic you can plot; the flow family
+concentrates it in the jumps themselves, and the objective it minimises is a
+single number you can compare between runs. All four are honest answers to
+slightly different questions, and choosing between them is choosing which
+failure you can tolerate.
 
 **Where this comes from.** The classification follows Ghiglia & Pritt (1998),
 which divides the field into minimum-norm and path-following/cut families; the
 comparative study that separates their practical behaviour is Zebker & Lu
-(1998). The alternatives that are not implemented here are the network-flow
-methods of Costantini (1998), Costantini & Rosen (1999) and Chen & Zebker (2000,
-2001), the graph-cut formulation of Bioucas-Dias & Valadão (2007), the
-three-dimensional flow method of Liu & Pan (2020), and the spatial–temporal
-formulation of SPURT (software only). The verification numbers are this
-project's.
+(1998); the flow family is Costantini (1998) in its two-dimensional linear
+form and Chen & Zebker (2002) for the quadratic cost, both implemented here.
+The alternatives that are *not* implemented are the statistical non-convex
+costs of Chen & Zebker (2000, 2001), the graph-cut formulation of Bioucas-Dias
+& Valadão (2007), the three-dimensional flow method of Liu & Pan (2020), and
+the spatial–temporal formulation of SPURT (software only). The verification
+numbers are this project's.
 
-## 15. One worked experiment with all seven methods
+## 16. One worked experiment with all ten variants
 
 The table below is reproducible: a $24\times24$ grid, the true phase a broad
 Gaussian bump of amplitude 6 rad, and additive noise of $\sigma = 0.6$ rad on
@@ -823,50 +1132,186 @@ truth = 6.0 * np.exp(-((yy - 12) ** 2 + (xx - 12) ** 2) / 150.0)
 psi = _wrap(truth + rng.normal(0.0, 0.6, size=truth.shape))
 ```
 
-The sampling condition is satisfied (the largest true step is 3.5 rad/24 pixels,
-far below $\pi$), so all seven methods return the *same branch* and the only
-question is how faithfully each represents the noise.
+The sampling condition is satisfied — the largest true step is $0.42$ rad —
+and the scene contains no residues at all (total charge $0$), so all ten
+variants are solving the same, easy problem. "Aligned RMSE" is the root-mean
+square of $u - \text{truth}$ after the mean difference has been removed, and
+$W$ is the wrapping operator of section 2.
 
-| method | $\max|W(u)-\psi|$ | aligned RMSE (noise $\sigma = 0.6$) |
-| --- | --- | --- |
-| least squares | 3.45 rad | 0.59 rad |
-| weighted $L^2$ | 3.45 rad | 0.59 rad |
-| minimum $L^p$, $p = 1.2$ | 3.45 rad | 0.59 rad |
-| reliability sorting | $4.4\times10^{-16}$ rad | 0.59 rad |
-| quality-guided | 0 rad | 0.59 rad |
-| Goldstein | 3.14 rad, exactly $\pi$ | 0.59 rad |
-| mask cuts | 3.14 rad, exactly $\pi$ | 0.59 rad |
-| Flynn | 3.14 rad, exactly $\pi$ | 0.59 rad |
+| variant | $\max |W(u-\psi)|$ | spread of $W(u-\psi)$ | aligned RMSE |
+| --- | --- | --- | --- |
+| least squares | 2.8365 rad | $2.0\times10^{-14}$ rad | 0.5946 rad |
+| weighted $L^2$ | 2.8365 rad | $2.0\times10^{-14}$ rad | 0.5946 rad |
+| minimum $L^p$, $p = 1.2$ | 2.8365 rad | $3.6\times10^{-15}$ rad | 0.5946 rad |
+| reliability sorting | 0 rad | $2.4\times10^{-16}$ rad | 0.5946 rad |
+| quality-guided | 0 rad | $2.4\times10^{-16}$ rad | 0.5946 rad |
+| Goldstein | $\pi$ rad | 6.283 rad | 0.5946 rad |
+| mask cuts | $\pi$ rad | 6.283 rad | 0.5946 rad |
+| Flynn | $\pi$ rad | 6.283 rad | 0.5946 rad |
+| MCF, linear cost | 0 rad | $3.6\times10^{-15}$ rad | 0.5946 rad |
+| MCF, quadratic cost | 0 rad | $3.6\times10^{-15}$ rad | 0.5946 rad |
 
 Read it in three parts.
 
-* Every method recovers the surface to within the noise, and the aligned errors
-  are identical: 0.59 rad against a noise level of 0.60 rad. When the
-  sampling condition holds, the choice of algorithm does not change the answer.
-* The three rows with an exact $\pi$ deviation are the cycle-counting
-  convention of section 11. Adding $\pi$ to their output — or passing
-  `--center circular`, which is the CLI default — reduces the deviation to
-  $6\times10^{-6}$ rad (Goldstein, mask cuts) and $5\times10^{-7}$ rad (Flynn):
-  wrap preservation up to single-precision accumulation.
-* The top three rows, by contrast, deviate by 3.45 rad, and aligning them does
-  not help: the deviation is not an offset but the smoothing itself, spread over
-  the whole array. These are the methods to reach for when you trust the noise
-  model and want the smallest mean-square error; they are the wrong choice when
-  a whole-cycle error in one corner of the image would ruin the product.
+* **All ten variants return the same field.** The aligned RMSE is identical to
+  four decimal places in every row, 0.5946 rad against a noise level of
+  0.60 rad, and the difference between any two outputs is a single constant —
+  the spread column is at the level of floating-point rounding, not a smooth
+  error field. When the sampling condition holds and no residues are present,
+  the choice of algorithm cannot change the answer.
+* **They differ only in the free constant** that a residue-free scene cannot
+  determine. Reliability sorting, quality-guided and both flow modes leave it
+  at 0; the three cut methods leave it at exactly $\pi$, which is the
+  cycle-counting convention of section 11; the least-squares family leaves it
+  at $+2.8365$ rad, which *looks* like an error but is one number for the whole
+  array — remove it and the least-squares output agrees with the flow output to
+  $10^{-14}$ rad.
+* **Removing it is the first thing to do with any unwrapped product**, and the
+  cut methods do it for you: `--center circular`, the CLI default, subtracts
+  the $\pi$ exactly, and the residual of Goldstein and mask cuts drops to
+  $6\times10^{-6}$ rad and of Flynn to $5\times10^{-7}$ rad. What remains is
+  single-precision accumulation in the cut search, not an ambiguity.
 
-Repeating the experiment with a mask that splits the array in two
-(`mask[:, 11:13] = False`) leaves the guarantee intact: reliability and
-quality-guided still satisfy $W(u)=\psi$ on both islands
-($0$ and $4.4\times10^{-16}$ rad), and the mean difference between the two
-islands is $0.0000$ rad — they were anchored to the same branch here, but
-nothing forced them to be.
+So on an easy scene the ten variants are not ten answers but one answer in ten
+conventions, and the differences you see in the first two columns are
+bookkeeping rather than quality. That is a statement about *this* scene: an
+easy scene is exactly the case in which a well-designed method cannot lose.
+
+**Splitting the array in two.** Now repeat it with
+`mask[:, 11:13] = False`, which cuts the array into a left and a right island
+and removes every residue with it (charge $0$ again). A residue-free scene with
+two components has *two* free constants, so an absolute comparison is
+meaningless; what is testable is the offset between the islands, and the truth
+has both islands at $\approx 0$ rad, so that offset should be $\approx 0$.
+
+| variant | relative offset, right $-$ left | $\max |W(u-\psi)|$ on valid pixels | aligned RMSE |
+| --- | --- | --- | --- |
+| least squares | $-0.0008$ rad | 2.8365 rad | 0.5846 rad |
+| weighted $L^2$ | $-0.0008$ rad | 2.8365 rad | 0.5846 rad |
+| minimum $L^p$, $p = 1.2$ | $-0.0008$ rad | 2.8365 rad | 0.5846 rad |
+| reliability sorting | $-0.0008$ rad | $2.4\times10^{-16}$ rad | 0.5846 rad |
+| quality-guided | $-0.0008$ rad | $2.4\times10^{-16}$ rad | 0.5846 rad |
+| Goldstein, mask cuts, Flynn | $-0.0008$ rad | $\pi$ rad | 0.5846 rad |
+| MCF, linear and quadratic | $-0.0008$ rad | $1.8\times10^{-15}$ rad | 0.5846 rad |
+
+Every variant gets the relative offset right on this seed, so the guarantee of
+section 15 survives the mask: the exact methods still satisfy $W(u) = \psi$ on
+both islands. But the free constants are now free *per island*, and a variant
+that sets one island's constant one whole turn away from the other's is still
+"wrap-preserving" while being useless. That is not hypothetical. Calling the
+reliability sorter with the mask,
+
+```python
+from parvaneh import reliability_unwrap, network_flow_unwrap
+u_rel = reliability_unwrap(psi, mask=mask)   # right island 2*pi too high
+u_mcf = network_flow_unwrap(psi, mask=mask)  # both islands on one branch
+```
+
+gives a relative offset of $-6.2840$ rad — one whole turn — and an aligned RMSE
+of 3.1959 rad against 0.5846 rad for the flow solver. The flow solution is
+global: its ground node keeps the two islands in one network, so the constant
+is decided by the cost of the edges that reach the ground, not by which island
+the traversal happened to start in.
+
+Repeating the masked experiment over sixteen seeds (seeds $0$ to $15$) shows
+how often the pairing goes wrong. A whole-turn island offset appears in
+
+| variant | seeds with a whole-turn island offset |
+| --- | --- |
+| reliability sorting | 6 of 16 (seeds 1, 2, 3, 7, 8, 15) |
+| quality-guided, Goldstein, mask cuts, MCF | 4 of 16 (seeds 5, 8, 9, 14) |
+| Flynn, least squares, weighted $L^2$, minimum $L^p$ | 0 of 16 |
+
+The four methods in the middle row fail on the *same* four seeds, which is worth
+reading carefully: whenever a whole-turn offset appears it is one decision being
+made the same way, not four independent accidents. All four decide an island's
+constant from the quality of the pixels inside that island — the sorter and the
+flow solver from the same per-pixel weights, the cut methods from the same
+residue positions — and across a two-column gap no per-pixel evidence connects
+the two islands, so each method has to guess the offset and guesses alike.
+
+The bottom row is not a better guess, it is a different kind of answer. Flynn
+picks its jumps along a spanning tree whose cuts reach the boundary, and the
+least-squares family does not place turns at all: give it the mask as a zero
+weight in the gap (Python's `unwrap(psi, weight)` with `weight = 0` on the
+excluded columns) and it still never lands a whole turn away, because the
+minimum-norm answer distributes the mismatch into a shallow seam instead — up to
+$0.38$ rad across the gap in these sixteen runs. A $0.38$ rad seam is a smaller
+number than $6.28$ rad and it is also a *wrong* field, just wrong in a way that
+is harder to notice.
 
 **Where this comes from.** The experiment, the numbers in it, and the code that
 produced them are this project's; the methods are the ones cited in sections 5
-to 12. The same seven methods are shown with figures in
+to 13. The variants are shown with figures in
 [`independent_synthetic_examples.ipynb`](../notebooks/independent_synthetic_examples.ipynb),
 and the practical instructions for running them from the command line are in
 [`cli.md`](cli.md).
+
+## 17. When the noise is strong: a discriminating experiment
+
+The easy scene above cannot separate the families, so here is one that can: the
+same $24\times24$ grid and the same shape of surface, but amplitude $8$ rad and
+noise $\sigma = 1.2$ rad, which is twice the noise of the first experiment.
+The largest true step is $0.56$ rad, so the sampling condition *still* holds,
+and the scene now carries residues: 91 of them for seed 8 and 88 for seed 3.
+Both are measured over the whole array, with "aligned RMSE" defined as above.
+
+The `weight` column says what was handed to the method that accepts a weight;
+`pixel_reliability(psi)` is the reliability rating of section 10, which is a
+per-pixel quality, not a variance.
+
+| variant | weight | $\max |W(u-\psi)|$, seed 8 | RMSE seed 8 | RMSE seed 3 |
+| --- | --- | --- | --- | --- |
+| least squares | — | 3.1401 rad | 1.5779 rad | 1.6666 rad |
+| weighted $L^2$ | rating | 3.1303 rad | 1.2900 rad | 1.3053 rad |
+| minimum $L^p$, $p = 1.2$ | — | 2.8021 rad | **1.1574 rad** | **1.2237 rad** |
+| reliability sorting | — | 0 rad | 1.5191 rad | 1.3201 rad |
+| quality-guided | — | 0 rad | 1.8766 rad | 1.5021 rad |
+| Goldstein | — | $\pi$ rad | 1.5139 rad | 2.8023 rad |
+| mask cuts | — | $\pi$ rad | 3.3041 rad | 3.3055 rad |
+| Flynn | rating | $\pi$ rad | 1.4019 rad | 1.6375 rad |
+| MCF, linear cost | — | 0 rad | 1.3152 rad | 1.3904 rad |
+| MCF, quadratic cost | — | 0 rad | 1.3152 rad | 1.3904 rad |
+
+Now the choice of method changes the answer by a factor of almost three, and
+the reading is completely different from section 16.
+
+* **The spread is caused by the residues, not by the noise.** Every variant
+  still satisfies the sampling condition, and every variant still recovers the
+  surface to the right order of magnitude, but the RMSE now ranges from 1.16 to
+  3.30 rad. The extra error is the price of the 91 (or 88) locations where the
+  wrapped field is locally inconsistent: a method that resolves them correctly
+  spreads a small error everywhere, and a method that resolves them wrongly
+  leaves whole regions a cycle away from the truth.
+* **Wrap preservation and accuracy are not the same thing.** The four
+  exact groups still reproduce $\psi$ to $10^{-15}$ rad, and that is a real
+  guarantee — the measurement is not corrupted — yet the *most accurate*
+  variant is minimum $L^p$, which is not wrap-preserving at all. That is
+  expected rather than contradictory: $L^p$ is asked to minimise a sum of
+  residuals and it satisfies that request by smoothing, and mean-square error is
+  the criterion under which smoothing wins. Among the wrap-preserving variants
+  the flow modes are the most accurate on both seeds (1.3152 and 1.3904 rad),
+  ahead of reliability sorting and quality-guided, and ahead of Flynn on seed 3.
+* **Weighting is not automatically an improvement.** Passing the reliability
+  rating to the flow solver improves it (1.3152 $\to$ 1.2613 rad on seed 8,
+  1.3904 $\to$ 1.3660 rad on seed 3) and improves least squares (1.5779
+  $\to$ 1.2900 rad), but it makes Flynn *worse* (1.3040 $\to$ 1.4019 rad on
+  seed 8). The rating is an ordering of edges for a traversal, and it was never
+  designed as a weight for a global objective; when it is used as one, the
+  answer is whatever the objective says, which need not be better. Compare like
+  with like: given the same weight, the flow solver beats Flynn on both seeds
+  (1.2613 against 1.4019 rad, and 1.3660 against 1.6375 rad).
+* **The two flow cost modes agree here.** Linear and quadratic costs give
+  identical fields on both seeds, which is worth knowing before paying for
+  either: on a scene with this density of residues the two objectives happen to
+  select the same set of jumps, and it is the benchmark of section 13.6 — not
+  this scene — that separates their runtimes.
+
+**Where this comes from.** As in section 16, the experiment is this project's
+and the methods are cited in sections 5 to 13. The residual counts, the true
+step size and the RMSE values were all recomputed for this page from the script
+shown; the two seeds are the ones used to check that a conclusion is not an
+artefact of one noise realisation.
 
 ## Where to go next
 

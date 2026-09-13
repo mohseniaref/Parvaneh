@@ -83,6 +83,10 @@ available methods:
                     backends: numba, python
   goldstein       Goldstein expanding-box branch cuts
                     backends: no backend choice
+  flynn           Flynn minimum-discontinuity network
+                    backends: no backend choice
+  mcf             minimum-cost flow on the dual network (Costantini)
+                    backends: no backend choice
   ...
 compiled kernels on this machine:
   numpy    available
@@ -290,12 +294,14 @@ raw input, `--shape`. `--shape` always takes exactly two numbers, because a raw
 raster is a single two-dimensional image; a weight for a stack is a `.npy`/`.npz`
 array with the stack's shape.
 
-Only `ls` and `reliability` read a weight. Passing `--weight` to any other method
-is not an error — those methods build their own quality map — but it would be
-easy to believe coherence steered the result when it did not, so the run says so:
+Only `ls`, `reliability` and `mcf` read a weight. For the flow solver the weight
+becomes the cost of an edge, so a low-confidence pixel difference is cheap to
+jump exactly where it is unreliable. Passing `--weight` to any other method is
+not an error — those methods build their own quality map — but it would be easy
+to believe coherence steered the result when it did not, so the run says so:
 
 ```text
-note     --method goldstein builds its own quality map and ignores --weight (weights are used by: ls, reliability)
+note     --method goldstein builds its own quality map and ignores --weight (weights are used by: ls, reliability, mcf)
 ```
 
 For `ls` a mask is simply converted into a 0/1 weight, so `--mask` and
@@ -305,7 +311,8 @@ there, or because its weight is zero — is cut out of the tree entirely rather
 than assigned a value. For the path-following methods (`quality-guided`,
 `goldstein`, `mask-cut`, `flynn`) a mask keeps the algorithm away from bad
 pixels and no weight is needed, because those methods build their own quality
-map. Masked pixels stay invalid in the output, which is exactly the case the
+map. For `mcf` a masked pixel removes the network nodes that touch it, so the
+curl-free condition is deliberately not enforced across the mask. Masked pixels stay invalid in the output, which is exactly the case the
 `--invalid-fill` guard above exists for.
 
 Two caveats about masks:
@@ -352,6 +359,8 @@ parvaneh unwrap wrapped.npy --method flynn -o out.npy
 parvaneh unwrap wrapped.npy --method reliability --weight coherence.npy -o out.npy
 parvaneh unwrap wrapped.npy --method lp --p 1.1 --outer-iter 20 -o out.npy
 parvaneh unwrap wrapped.npy --method goldstein --max-cut-length 200 -o out.npy
+parvaneh unwrap wrapped.npy --method mcf --cost linear -o out.npy
+parvaneh unwrap wrapped.npy --method mcf --cost quadratic --weight coh.npy -o out.npy
 ```
 
 | Option | Method | Meaning | Default |
@@ -363,11 +372,12 @@ parvaneh unwrap wrapped.npy --method goldstein --max-cut-length 200 -o out.npy
 | `--inner-iter` | `lp` | least-squares iterations per reweighting | `100` |
 | `--epsilon` | `lp` | softening of the reweighting, in radians | `1e-3` |
 | `--max-cut-length` | `goldstein` | cap on a branch cut's expansion search | none |
+| `--cost` | `mcf` | `linear` counts each $2\pi$ jump, `quadratic` squares it | `linear` |
 
 `--backend auto` picks the fastest kernel that is both available on this
 machine and supported by the chosen method. Naming a backend that is missing or
 unsupported is an error with a message that lists the usable alternatives. The
-methods without a compiled kernel (`goldstein`, `mask-cut`, `flynn`, `lp`)
+methods without a compiled kernel (`goldstein`, `mask-cut`, `flynn`, `mcf`, `lp`)
 ignore `--backend` and say so on stderr.
 
 ## Speed
@@ -449,8 +459,9 @@ variable, or a batch script:
 parvaneh unwrap wrapped.npy --info -o out.npy | jq -r .seconds
 ```
 
-Always present: `method`, `backend` (`null` when the method has no backend
-choice), `center`, `shape`, `seconds`, `input`, `output`. Then a
+Always present: `method`, `backend` (`null` for the methods that have no
+backend choice at all; `mcf` reports the `python` engine it always uses),
+`center`, `shape`, `seconds`, `input`, `output`. Then a
 method-specific block:
 
 | Method | Extra keys |
@@ -460,6 +471,7 @@ method-specific block:
 | `reliability` | `pixels`, `edges`, `merges`, `discarded`, `components` |
 | `goldstein`, `mask-cut` | `cut_pixels` |
 | `flynn` | `iterations` |
+| `mcf` | `cost`, `pixels`, `nodes`, `edges`, `residues`, `augmentations`, `components`, `max_jump`, `ground_imbalance`, `total_cost` |
 | `lp` | `p`, `outer_iterations`, `inner_iterations`, `objective`, `relative_change` |
 
 `backend` reports the engine that **actually ran**, not the one you asked for.
@@ -471,6 +483,19 @@ reads `numpy` — which is also what the progress line on stderr says
 is the same code path, just the general one. The `reliability` method is the
 exception among the backend-aware ones in that its compiled merge loop is
 rank-agnostic, so it keeps the requested backend on a stack.
+
+For `mcf` the numbers describe the network that was built and solved:
+`nodes` is one per $2\times2$ cell plus the ground node, `edges` one per pixel
+difference, `residues` the total absolute charge of the input counted over both
+signs of every dipole, `augmentations` how many repair steps the solver took,
+and `ground_imbalance` the leftover charge that no pair of residues could
+absorb, so that the ground node had to. The run time follows `augmentations`
+times `nodes`, not the pixel count alone; `2 * augmentations - residues` equals
+`ground_imbalance`, which is zero whenever the scene's residue charges cancel.
+`max_jump` is the largest number of whole turns placed on a single pixel
+difference, so a value above one is a strong hint that a genuine $2\pi$ cliff
+is present; `components` above one means the mask split the scene, and
+`total_cost` is the weighted total of the jumps the solver settled for.
 
 Two of these are worth watching in practice: `converged: false` for `ls` means
 `--max-iter` stopped the solver early (raise it or relax `--tol`), and a large
@@ -521,13 +546,14 @@ from parvaneh import phase_residues
 print(np.count_nonzero(phase_residues(np.load('wrapped.npy'))))
 "
 
-for m in ls lp goldstein mask-cut flynn quality-guided reliability; do
+for m in ls lp goldstein mask-cut flynn mcf quality-guided reliability; do
     parvaneh unwrap wrapped.npy --method "$m" -q -o "out-$m.npy"
 done
 ```
 
 Because every result is offset-aligned by default, the differences between the
-files now mean something. `flynn` and `lp` preserve genuine $2\pi$ cliffs;
+files now mean something. `flynn`, `mcf` and `lp` preserve genuine $2\pi$
+cliffs;
 `ls` smooths them; a large disagreement concentrated along a line usually means
 residues along a real discontinuity. `reliability` sits with the path-following
 family here: it joins pixels along a maximum-reliability tree, so a residue pair

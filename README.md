@@ -50,6 +50,8 @@ not distribute the book, its original source code, or its supplied datasets.
 - Quality-guided mask cuts
 - Flynn minimum-discontinuity unwrapping
 - Robust minimum-$L^p$ reconstruction with IRLS
+- Minimum-cost flow on the dual residue network, the exact discrete
+  optimum behind Costantini's formulation
 - Reliability sorting into a maximum-reliability tree
 - Least-squares and reliability solvers accept any number of axes, so a stack or
   a volume can be unwrapped in one piece instead of slice by slice
@@ -149,6 +151,7 @@ See [`docs/cli.md`](docs/cli.md) for the complete option reference,
 ```bash
 pytest -q                                        # the full test suite
 python benchmark.py --rows 256 --cols 320        # warmed backend timings
+python benchmarks/benchmark_mcf.py               # flow solver size sweep
 ```
 
 Every algorithm is checked against a mathematical property or a synthetic scene

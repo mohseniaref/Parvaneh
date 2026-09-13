@@ -14,6 +14,7 @@ from .goldstein import goldstein_unwrap, mask_cut_unwrap
 from .diagnostics import discontinuity_map, surface_difference
 from .flynn import flynn_unwrap
 from .reliability import ReliabilityInfo, pixel_reliability, reliability_unwrap
+from .network_flow import NetworkFlowInfo, network_flow_unwrap
 from .raster import (RasterError, RasterMeta, NoRasterBackendError,
                      read_raster, raster_backend, write_raster)
 
@@ -30,6 +31,7 @@ __all__ = [
     "surface_difference", "discontinuity_map",
     "flynn_unwrap",
     "pixel_reliability", "reliability_unwrap", "ReliabilityInfo",
+    "network_flow_unwrap", "NetworkFlowInfo",
     "read_raster", "write_raster", "raster_backend", "RasterMeta",
     "RasterError", "NoRasterBackendError",
 ]

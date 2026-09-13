@@ -5,14 +5,14 @@ This page is the single list of those sources: books with their ISBNs, papers
 with their DOIs, and the open-source projects that are compared against or used
 as baselines.
 
-The papers are grouped by what they are used for. Entries 5 to 19 are the
-sources of the mathematics that is implemented here. Entries 20 to 29 are the
-methods that are *not* implemented: they are listed because they are the
-alternative answers to the same problem, and because
-[`algorithms.md`](algorithms.md) and
-[`phase_unwrapping_history_and_theory.md`](phase_unwrapping_history_and_theory.md)
-compare against them. Where a claim could not be checked against the published
-text, the entry says so rather than asserting it.
+The papers are grouped by what they are used for. Entries 6 to 20 are the
+sources of the mathematics that is implemented here. Entries 21 to 31 are the
+neighbouring formulations: the network-flow family and its statistical variants,
+the graph-cut and matching alternatives, and the reliability and spatial-time
+schemes the sorted methods grew out of. Where an entry's method *is*
+implemented, its note names the function; where it is *not*, the note says so.
+Where a claim could not be checked against the published text, the entry says
+that as well, rather than asserting it.
 
 The purpose is reproducibility of *claims*. When
 [`mathematics.md`](mathematics.md) derives an equation, the last line of the
@@ -64,27 +64,37 @@ explanations were written for this project. See
    numerical-analysis text with a chapter on fast Poisson solvers covers the same
    result; this one is written at the right level for a first read.
 
+5. **R. K. Ahuja, T. L. Magnanti and J. B. Orlin**, *Network Flows: Theory,
+   Algorithms, and Applications*. Prentice Hall, Englewood Cliffs, 1993.
+   ISBN 978-0-13-617549-0.
+
+   The reference text for the minimum-cost-flow machinery: the residual network,
+   the successive shortest augmenting path algorithm (Algorithm 9.5, section
+   9.3), and the convex-cost extension used for the quadratic objective. The
+   solver in [`network_flow.py`](../src/parvaneh/network_flow.py) is written from
+   this presentation.
+
 ---
 
 ## Papers
 
 ### The problem, and what can be recovered from it
 
-5. **R. M. Goldstein, H. A. Zebker and C. L. Werner**, "Satellite radar
+6. **R. M. Goldstein, H. A. Zebker and C. L. Werner**, "Satellite radar
    interferometry: Two-dimensional phase unwrapping." *Radio Science* **23**
    (1988) 713–720. <https://doi.org/10.1029/RS023i004p00713>
 
    The paper that made unwrapping an established problem in radar
    interferometry, and that introduced residues and branch cuts.
 
-6. **K. Itoh**, "Analysis of the phase unwrapping algorithm." *Applied Optics*
+7. **K. Itoh**, "Analysis of the phase unwrapping algorithm." *Applied Optics*
    **21** (1982) 2470. <https://doi.org/10.1364/AO.21.002470>
 
    The local consistency condition: if neighbouring phase differences are all
    smaller than $\pi$ in magnitude, summing them along a path recovers the phase
    regardless of which path you choose.
 
-7. **B. R. Hunt**, "Matrix formulation of the reconstruction of phase values
+8. **B. R. Hunt**, "Matrix formulation of the reconstruction of phase values
    from phase differences." *Journal of the Optical Society of America* **69**
    (1979) 393–399. <https://doi.org/10.1364/JOSA.69.000393>
 
@@ -93,7 +103,7 @@ explanations were written for this project. See
 
 ### Least squares, fast transforms and robust norms
 
-8. **D. C. Ghiglia and L. A. Romero**, "Robust two-dimensional weighted and
+9. **D. C. Ghiglia and L. A. Romero**, "Robust two-dimensional weighted and
    unweighted phase unwrapping that uses fast transforms and iterative methods."
    *Journal of the Optical Society of America A* **11** (1994) 107–117.
    <https://doi.org/10.1364/JOSAA.11.000107>
@@ -102,7 +112,7 @@ explanations were written for this project. See
    conditions, and the DCT-preconditioned conjugate-gradient solver that
    `unwrap()` implements.
 
-9. **D. C. Ghiglia and L. A. Romero**, "Minimum $L^p$-norm two-dimensional phase
+10. **D. C. Ghiglia and L. A. Romero**, "Minimum $L^p$-norm two-dimensional phase
    unwrapping." *Journal of the Optical Society of America A* **13** (1996)
    1999–2013. <https://doi.org/10.1364/JOSAA.13.001999>
 
@@ -111,7 +121,7 @@ explanations were written for this project. See
 
 ### Quality-guided and reliability sorting
 
-10. **M. A. Herráez, D. R. Burton, M. J. Lalor and M. A. Gdeisat**, "Fast
+11. **M. A. Herráez, D. R. Burton, M. J. Lalor and M. A. Gdeisat**, "Fast
     two-dimensional phase-unwrapping algorithm based on sorting by reliability
     following a noncontinuous path." *Applied Optics* **41**(35) (2002)
     7437–7444. <https://doi.org/10.1364/AO.41.007437>
@@ -128,7 +138,7 @@ explanations were written for this project. See
     [`mathematics.md`](mathematics.md) is therefore Parvaneh's own rating, built
     on their sorting scheme, not their printed formula.
 
-11. **H. S. Abdul-Rahman, M. A. Gdeisat, D. R. Burton and M. J. Lalor**, "Fast
+12. **H. S. Abdul-Rahman, M. A. Gdeisat, D. R. Burton and M. J. Lalor**, "Fast
     three-dimensional phase-unwrapping algorithm based on sorting by reliability
     following a noncontinuous path." *Proceedings of SPIE* **5856** (2005)
     32–40. <https://doi.org/10.1117/12.611415>
@@ -136,7 +146,7 @@ explanations were written for this project. See
     The three-dimensional best-path construction. This is the paper
     scikit-image's `unwrap_phase` cites for its three-dimensional case.
 
-12. **H. S. Abdul-Rahman, M. A. Gdeisat, D. R. Burton, M. J. Lalor, F. Lilley
+13. **H. S. Abdul-Rahman, M. A. Gdeisat, D. R. Burton, M. J. Lalor, F. Lilley
     and C. J. Moore**, "Fast and robust three-dimensional best path phase
     unwrapping algorithm." *Applied Optics* **46**(26) (2007) 6623–6635.
     <https://doi.org/10.1364/AO.46.006623>
@@ -144,7 +154,7 @@ explanations were written for this project. See
     The journal version of the same idea, and the one the volume branch of
     `reliability_unwrap()` is benchmarked against.
 
-13. **H. S. Abdul-Rahman, M. Arevalillo-Herráez, M. A. Gdeisat, D. R. Burton,
+14. **H. S. Abdul-Rahman, M. Arevalillo-Herráez, M. A. Gdeisat, D. R. Burton,
     M. J. Lalor, F. Lilley, C. J. Moore, D. B. Sheltraw and M. Qudeisat**,
     "Robust three-dimensional best-path phase-unwrapping algorithm that avoids
     singularity loops." *Applied Optics* **48**(23) (2009) 4582–4596.
@@ -157,7 +167,7 @@ explanations were written for this project. See
 
 ### Minimum discontinuity and discrete optimisation
 
-14. **T. J. Flynn**, "Two-dimensional phase unwrapping with minimum weighted
+15. **T. J. Flynn**, "Two-dimensional phase unwrapping with minimum weighted
     discontinuity." *Journal of the Optical Society of America A* **14**(10)
     (1997) 2692–2701. <https://doi.org/10.1364/JOSAA.14.002692>
 
@@ -166,14 +176,14 @@ explanations were written for this project. See
 
 ### Numerics and algorithms
 
-15. **M. R. Hestenes and E. Stiefel**, "Methods of conjugate gradients for
+16. **M. R. Hestenes and E. Stiefel**, "Methods of conjugate gradients for
     solving linear systems." *Journal of Research of the National Bureau of
     Standards* **49**(6) (1952) 409–436. <https://doi.org/10.6028/jres.049.044>
 
     The original conjugate-gradient method, used for the weighted systems where
     the DCT is no longer an exact inverse.
 
-16. **G. Strang**, "The discrete cosine transform." *SIAM Review* **41**(1)
+17. **G. Strang**, "The discrete cosine transform." *SIAM Review* **41**(1)
     (1999) 135–147. <https://doi.org/10.1137/S0036144598336745>
 
     The shortest citable statement of the fact the fast solver rests on: *each
@@ -182,7 +192,7 @@ explanations were written for this project. See
     which of the four cosine transforms applies. Section 9 of
     [`mathematics.md`](mathematics.md) is this result.
 
-17. **J. B. Kruskal**, "On the shortest spanning subtree of a graph and the
+18. **J. B. Kruskal**, "On the shortest spanning subtree of a graph and the
     traveling salesman problem." *Proceedings of the American Mathematical
     Society* **7**(1) (1956) 48–50.
     <https://doi.org/10.1090/S0002-9939-1956-0078686-7>
@@ -190,14 +200,14 @@ explanations were written for this project. See
     The greedy maximum-spanning-forest algorithm that reliability sorting is an
     instance of.
 
-18. **R. E. Tarjan**, "Efficiency of a good but not linear set union algorithm."
+19. **R. E. Tarjan**, "Efficiency of a good but not linear set union algorithm."
     *Journal of the ACM* **22**(2) (1975) 215–225.
     <https://doi.org/10.1145/321879.321884>
 
     Union–find with path compression and union by size, which is what makes the
     merge loop of the reliability sorter run essentially in linear time.
 
-19. **W. H. Pritt and J. S. Shipman**, "Least-squares two-dimensional phase
+20. **W. H. Pritt and J. S. Shipman**, "Least-squares two-dimensional phase
     unwrapping using FFT's." *IEEE Transactions on Geoscience and Remote
     Sensing* **32**(3) (1994) 706–708. <https://doi.org/10.1109/36.297989>
 
@@ -206,17 +216,18 @@ explanations were written for this project. See
     "fast-transform" rather than "DCT-only": the two differ only in how the
     reflecting boundary condition is imposed.
 
-### The methods compared against
+### The neighbouring formulations
 
-20. **M. Costantini**, "A novel phase unwrapping method based on network
+21. **M. Costantini**, "A novel phase unwrapping method based on network
     programming." *IEEE Transactions on Geoscience and Remote Sensing* **36**(3)
     (1998) 813–821. <https://doi.org/10.1109/36.673674>
 
     Minimum-cost flow: the integer-optimisation formulation that SNAPHU and the
-    3-D flow codes are instances of. Recorded as the reference point for the
-    minimum-cost-flow work planned in the roadmap; not implemented here.
+    3-D flow codes are instances of, and the dual network that section 13 of
+    [`mathematics.md`](mathematics.md) is built on. Implemented here as
+    `network_flow_unwrap()` with `cost="linear"`.
 
-21. **M. Costantini and P. A. Rosen**, "A generalized phase unwrapping approach
+22. **M. Costantini and P. A. Rosen**, "A generalized phase unwrapping approach
     for sparse data." *IEEE International Geoscience and Remote Sensing
     Symposium (IGARSS)* **1** (1999) 267–269.
     <https://doi.org/10.1109/IGARSS.1999.773467>
@@ -224,23 +235,36 @@ explanations were written for this project. See
     The flow formulation relaxed to sparse and irregular samples, which is what
     makes it relevant to a network of coherent points.
 
-22. **C. W. Chen and H. A. Zebker**, "Network approaches to two-dimensional phase
+23. **C. W. Chen and H. A. Zebker**, "Network approaches to two-dimensional phase
     unwrapping: intractability and two new algorithms." *Journal of the Optical
     Society of America A* **17**(3) (2000) 401–414.
     <https://doi.org/10.1364/JOSAA.17.000401>
 
     Why the general minimum-discontinuity problem is NP-hard, and the two
-    approximations that make it tractable in practice.
+    approximations that make it tractable in practice. The approximations are
+    not implemented here.
 
-23. **C. W. Chen and H. A. Zebker**, "Two-dimensional phase unwrapping with use
+24. **C. W. Chen and H. A. Zebker**, "Two-dimensional phase unwrapping with use
     of statistical models for cost functions in nonlinear optimization."
     *Journal of the Optical Society of America A* **18**(2) (2001) 338–351.
     <https://doi.org/10.1364/JOSAA.18.000338>
 
-    The statistical-cost formulation that the SNAPHU program implements, and the
-    source of the cost functions a flow-based method needs.
+    The statistical-cost formulation that the SNAPHU program implements: the
+    non-convex costs that make a flow solver prefer some $2\pi$ jumps over
+    others depending on what the terrain is expected to be. The arc costs in
+    Parvaneh are convex, so this cost model is *not* implemented here.
 
-24. **J. M. Bioucas-Dias and G. Valadão**, "Phase unwrapping via graph cuts."
+25. **C. W. Chen and H. A. Zebker**, "Phase unwrapping for large SAR
+    interferograms: statistical segmentation and generalized network models."
+    *IEEE Transactions on Geoscience and Remote Sensing* **40**(8) (2002)
+    1709–1719. <https://doi.org/10.1109/TGRS.2002.802453>
+
+    The generalised network model that makes large scenes tractable, and the
+    source of the quadratic arc costs minimised by
+    `network_flow_unwrap(cost="quadratic")`. This is the paper behind SNAPHU; the
+    network used here is Costantini's, not the one of this paper.
+
+26. **J. M. Bioucas-Dias and G. Valadão**, "Phase unwrapping via graph cuts."
     *IEEE Transactions on Image Processing* **16**(3) (2007) 698–709.
     <https://doi.org/10.1109/TIP.2006.888351>
 
@@ -248,7 +272,7 @@ explanations were written for this project. See
     flow / minimum cut, which is the discrete-optimisation route rather than the
     iterative-reweighting route taken by `unwrap_lp()`.
 
-25. **F. Liu and B. Pan**, "A new 3-D minimum cost flow phase unwrapping
+27. **F. Liu and B. Pan**, "A new 3-D minimum cost flow phase unwrapping
     algorithm based on closure phase." *IEEE Transactions on Geoscience and
     Remote Sensing* **58**(3) (2020) 1857–1867.
     <https://doi.org/10.1109/TGRS.2019.2949926>
@@ -257,7 +281,7 @@ explanations were written for this project. See
     project listed under *Software* below. It is the closest published relative
     of the volumetric flow solver on the roadmap.
 
-26. **T. Dubois-Taine, S. Akiki and A. d'Aspremont**, "Iteratively reweighted
+28. **T. Dubois-Taine, S. Akiki and A. d'Aspremont**, "Iteratively reweighted
     least squares for phase unwrapping." *Optimization Methods and Software*
     **40**(6) (2025) 1368–1408.
     <https://doi.org/10.1080/10556788.2025.2522348>
@@ -268,21 +292,21 @@ explanations were written for this project. See
     weights. The same reweighting structure as `unwrap_lp()`, with the theory of
     why it converges.
 
-27. **R. Cusack, J. M. Huntley and H. T. Goldrein**, "Improved noise-immune
+29. **R. Cusack, J. M. Huntley and H. T. Goldrein**, "Improved noise-immune
     phase-unwrapping algorithm." *Applied Optics* **34**(5) (1995) 781–789.
     <https://doi.org/10.1364/AO.34.000781>
 
     The reliability-guided approach that precedes the sorted form used here, and
     the origin of the "flood the most reliable pixel first" idea.
 
-28. **J. R. Buckland, J. M. Huntley and S. R. E. Turner**, "Unwrapping noisy
+30. **J. R. Buckland, J. M. Huntley and S. R. E. Turner**, "Unwrapping noisy
     phase maps by use of a minimum-cost-matching algorithm." *Applied Optics*
     **34**(23) (1995) 5100–5108. <https://doi.org/10.1364/AO.34.005100>
 
     The minimum-cost-matching approach to residue pairing, which is the
     principled alternative to Goldstein's greedy branch cuts.
 
-29. **H. A. Zebker and Y. Lu**, "Phase unwrapping algorithms for radar
+31. **H. A. Zebker and Y. Lu**, "Phase unwrapping algorithms for radar
     interferometry: residue-cut, least-squares, and synthesis algorithms."
     *Journal of the Optical Society of America A* **15**(3) (1998) 586–598.
     <https://doi.org/10.1364/JOSAA.15.000586>
@@ -358,8 +382,9 @@ required to install or run Parvaneh.
 | `mask_cut_unwrap` | Ghiglia & Pritt (1998), ch. 6 |
 | `quality_guided_unwrap` | Ghiglia & Pritt (1998), ch. 4; Cusack, Huntley & Goldrein (1995) |
 | `max_gradient_quality`, `pseudocorrelation_quality`, `derivative_variance_quality` | Ghiglia & Pritt (1998), ch. 4 |
-| `pixel_reliability`, `reliability_unwrap` | sorting scheme from Herráez *et al.* (2002); three-dimensional construction from Abdul-Rahman *et al.* (2005, 2007); the rating itself is Parvaneh's own — see entry 10 |
+| `pixel_reliability`, `reliability_unwrap` | sorting scheme from Herráez *et al.* (2002); three-dimensional construction from Abdul-Rahman *et al.* (2005, 2007); the rating itself is Parvaneh's own — see entry 11 |
 | `flynn_unwrap` | Flynn (1997) |
+| `network_flow_unwrap` | Costantini (1998) for the dual network and the linear cost; Chen & Zebker (2002) for the quadratic cost; Ahuja, Magnanti & Orlin (1993), Algorithm 9.5, for the solver |
 | local consistency rule | Itoh (1982) |
 | normal equations and null space | Hunt (1979) |
 | DCT diagonalisation | Strang (1999); Strang (2007) |
@@ -369,7 +394,7 @@ required to install or run Parvaneh.
 | union–find | Tarjan (1975) |
 | decomposition of the least-squares error | Arfken, Weber & Harris (2013) |
 | choice between the method families | Zebker & Lu (1998) |
-| not implemented: network-flow methods | Costantini (1998); Costantini & Rosen (1999); Chen & Zebker (2000, 2001) |
+| not implemented: statistical-cost flow | Chen & Zebker (2000, 2001); Costantini & Rosen (1999) for sparse data |
 | not implemented: graph cuts, 3-D flow, space–time | Bioucas-Dias & Valadão (2007); Liu & Pan (2020); SPURT (software) |
 | scikit-image baseline | van der Walt *et al.* (2014) |
 

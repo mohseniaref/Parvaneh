@@ -602,6 +602,7 @@ def test_parser_defaults_match_the_documented_interface():
     assert args.workers == -1
     assert args.max_iter == 100
     assert args.tol == 1e-8
+    assert args.cost == "linear"
     assert args.dtype == "<f4"
     assert args.out_dtype is None
     assert args.order == "C"
@@ -610,6 +611,64 @@ def test_parser_defaults_match_the_documented_interface():
     assert args.shape is None
     parsed = build_parser().parse_args(["wrapped.raw", "--shape", "4", "5"])
     assert parsed.shape == [4, 5]
+
+
+# --------------------------------------------------------------------------
+# minimum-cost flow is wired like any other method
+# --------------------------------------------------------------------------
+
+def test_mcf_agrees_with_the_answer_key(scene, tmp_path, capsys):
+    """The command line reaches the solver and returns a consistent surface."""
+    _, wrapped, path = scene
+    out_path = tmp_path / "mcf.npy"
+    status, _, err = run([str(path), "--method", "mcf", "-o", str(out_path)],
+                         capsys)
+    assert status == 0, err
+    result = np.load(str(out_path))
+    # The contract of any unwrapping is that it wraps back to its input; the
+    # scene's own noise is what separates the answer key from the input.
+    assert np.abs(wrap_phase(result - wrapped)).max() < 1e-5
+
+
+def test_mcf_reports_the_network_it_solved(scene, tmp_path, capsys):
+    _, _, path = scene
+    status, out, err = run([str(path), "--method", "mcf", "-o",
+                            str(tmp_path / "mcf.npy"), "--info"], capsys)
+    assert status == 0, err
+    summary = json.loads(out)
+    assert summary["method"] == "mcf"
+    assert summary["cost"] == "linear"
+    assert summary["nodes"] == 23 * 31 + 1        # one node per valid 2x2 cell
+    assert summary["edges"] == 23 * 32 + 24 * 31  # one arc per pixel edge
+    assert summary["total_cost"] == 0             # a scene this smooth is exact
+
+
+def test_mcf_uses_a_weight_map_instead_of_dropping_it(scene, tmp_path, capsys):
+    """``mcf`` is in WEIGHT_METHODS, so coherence must reach the solver."""
+    _, wrapped, path = scene
+    np.save(str(tmp_path / "weight.npy"), np.ones(wrapped.shape))
+    status, _, err = run([str(path), "--method", "mcf",
+                          "--weight", str(tmp_path / "weight.npy"),
+                          "-o", str(tmp_path / "out.npy")], capsys)
+    assert status == 0, err
+    assert "ignores" not in err
+
+
+@pytest.mark.parametrize("cost", ["linear", "quadratic"])
+def test_mcf_cost_choice_is_accepted(cost, scene, tmp_path, capsys):
+    _, _, path = scene
+    status, out, err = run([str(path), "--method", "mcf", "--cost", cost,
+                            "-o", str(tmp_path / "out.npy"), "--info"], capsys)
+    assert status == 0, err
+    assert json.loads(out)["cost"] == cost
+
+
+def test_mcf_rejects_an_unknown_cost(scene, capsys):
+    _, _, path = scene
+    status, _, err = run([str(path), "--method", "mcf", "--cost", "cubic"],
+                         capsys)
+    assert status == 1
+    assert "invalid choice: 'cubic'" in err
 
 
 # --------------------------------------------------------------------------

@@ -44,6 +44,7 @@ from ..flynn import flynn_unwrap
 from ..goldstein import goldstein_unwrap, mask_cut_unwrap
 from ..io import read_raw_raster, write_raw_raster
 from ..minimum_norm import unwrap_lp
+from ..network_flow import COST_MODES, network_flow_unwrap
 from ..path_following import quality_guided_unwrap
 from ..quality import (derivative_variance_quality, max_gradient_quality,
                        pseudocorrelation_quality)
@@ -61,6 +62,7 @@ METHODS = (
     ("goldstein", "Goldstein expanding-box branch cuts"),
     ("mask-cut", "branch cuts placed from an unwrapped quality-guided mask"),
     ("flynn", "Flynn minimum-discontinuity network"),
+    ("mcf", "minimum-cost flow on the dual network (Costantini)"),
     ("lp", "minimum-Lp, iteratively reweighted least squares"),
 )
 
@@ -75,6 +77,7 @@ METHOD_BACKENDS = {
     "goldstein": (),
     "mask-cut": (),
     "flynn": (),
+    "mcf": (),
     "lp": (),
 }
 
@@ -85,7 +88,7 @@ ND_METHODS = ("ls", "reliability")
 
 #: Methods that can use ``--weight``.  The others build their own quality map,
 #: so a weight handed to them would be silently dropped.
-WEIGHT_METHODS = ("ls", "reliability")
+WEIGHT_METHODS = ("ls", "reliability", "mcf")
 
 
 def build_parser(add_help=True):
@@ -108,6 +111,9 @@ examples:
 
   # a noisy image that carries residues: reliability sorting avoids them
   parvaneh unwrap noisy.npy --method reliability -o unwrapped.npy
+
+  # the same residues handled exactly, as a minimum-cost flow on the dual net
+  parvaneh unwrap noisy.npy --method mcf --cost linear -o unwrapped.npy
 
   # a cube of interferograms, unwrapped jointly along all three axes
   parvaneh unwrap cube.npy --method ls -o cube-unwrapped.npy
@@ -201,6 +207,10 @@ examples:
                                    "--method lp (default: 1e-3)")
     method_group.add_argument("--max-cut-length", type=int, default=None,
                               help="branch-cut length cap for --method goldstein")
+    method_group.add_argument("--cost", choices=COST_MODES, default="linear",
+                              help="edge penalty for --method mcf: 'linear' "
+                                   "counts 2*pi jumps, 'quadratic' squares them "
+                                   "(default: linear)")
 
     parser.add_argument("--center", choices=("circular", "none"), default="circular",
                         help="output offset convention: 'circular' (default) pins "
@@ -581,6 +591,13 @@ def _run_method(args, phase, backend, mask, weight):
         result, iterations = flynn_unwrap(phase, quality, mask,
                                           return_iterations=True)
         return result, {"iterations": int(iterations)}
+
+    if method == "mcf":
+        # The solver's own iteration count is a property of the network, not a
+        # convergence knob, so --max-iter is deliberately left unused here.
+        result, info = network_flow_unwrap(phase, weight, mask=mask,
+                                           cost=args.cost, return_info=True)
+        return result, dataclasses.asdict(info)
 
     result, info = unwrap_lp(phase, p=args.p, epsilon=args.epsilon,
                              outer_iter=args.outer_iter,

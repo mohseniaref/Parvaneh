@@ -62,3 +62,7 @@ notebooks/chapter_03_phase_quality_masks_filters.ipynb
 notebooks/chapter_04_path_following_methods.ipynb
 notebooks/chapter_05_minimum_norm_methods.ipynb
 notebooks/chapter_06_comparisons_and_conclusion.ipynb
+
+# Local review notes kept out of the public release
+report_bug.md
+interesting_point.md

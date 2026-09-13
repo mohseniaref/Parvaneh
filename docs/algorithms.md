@@ -1,9 +1,10 @@
 # Algorithms
 
 Parvaneh implements the classical phase-unwrapping families described by Ghiglia
-and Pritt (1998), plus reliability sorting in the spirit of Herráez and
-co-workers (2002). Every algorithm is written from the published mathematics; no
-historical C or MATLAB program is executed or loaded. Two of the solvers are
+and Pritt (1998), reliability sorting in the spirit of Herráez and co-workers
+(2002), and minimum-cost flow on the dual network of Costantini (1998). Every
+algorithm is written from the published mathematics; no historical C or MATLAB
+program is executed or loaded. Two of the solvers are
 dimension-independent: least squares (`unwrap`) and reliability sorting
 (`reliability_unwrap`) accept an array of any rank whose axes all have at least
 two samples, so the same call unwraps a single image or a stack of them (see
@@ -31,9 +32,10 @@ disagreement is concentrated at **residues**: $2\times2$ cells whose four wrappe
 differences add up to a non-zero multiple of $2\pi$. Residues are the reason
 unwrapping is a global problem and the reason so many algorithms exist.
 
-## The two families
+## The three families
 
-Unwrapping algorithms split into two broad families, and Parvaneh contains both.
+Unwrapping algorithms split into three broad families, and Parvaneh contains
+all three.
 
 **Global (minimum-norm) methods** treat the whole image as one optimisation
 problem. They never integrate a path, so residues cannot derail them. Instead
@@ -49,6 +51,16 @@ and integrate the phase along it. They respect the integer nature of the
 problem exactly and preserve sharp features better than a smoother, but they
 need decisions about which pixels or edges to trust, and the decisions can go
 wrong in low-coherence areas.
+
+**Global discrete optimisation (network flow)** keeps the decision *inside* one
+optimisation: the unknowns are the whole numbers of turns placed on individual
+pixel differences, and the objective counts the total 2π discontinuity those
+choices create. That combination — integer unknowns, linear objective — happens
+to be exactly solvable, because the constraint matrix of a network is totally
+unimodular, so the continuous optimum is already integral. It is the only family
+here that both respects the integer nature of the problem and returns the
+provably best answer for the stated objective, at the price of being slower than
+a smoothed least-squares solve and of needing its objective to be convex.
 
 ## One image, a stack, or a cube
 
@@ -76,9 +88,10 @@ The details worth knowing:
 - **Rank is a parameter, not a separate API.** `unwrap` and
   `reliability_unwrap` take whatever shape you give them — there is no
   `unwrap_3d` to learn.
-- **The path-following and cycle-based families are 2-D.** `quality_guided_unwrap`,
-  `goldstein_unwrap`, `mask_cut_unwrap`, `flynn_unwrap` and `unwrap_lp` require a
-  2-D array and reject anything else rather than guessing. To use one of them as
+- **The path-following, cycle-based and flow families are 2-D.**
+  `quality_guided_unwrap`, `goldstein_unwrap`, `mask_cut_unwrap`,
+  `flynn_unwrap`, `unwrap_lp` and `network_flow_unwrap` require a 2-D array and
+  reject anything else rather than guessing. To use one of them as
   a stack baseline, call it once per slice in a loop; the third notebook does
   exactly that, and that loop is what "slice by slice" means in its tables.
 - **Only one constant stays unobservable.** The global mean of a solution is
@@ -110,6 +123,7 @@ The details worth knowing:
 | Goldstein branch cuts | `goldstein_unwrap` | `goldstein` | 2-D | Implemented and reference-tested |
 | Quality-guided mask cuts | `mask_cut_unwrap` | `mask-cut` | 2-D | Implemented and reference-tested |
 | Flynn minimum discontinuity | `flynn_unwrap` | `flynn` | 2-D | Implemented and reference-tested |
+| Minimum-cost flow (Costantini) | `network_flow_unwrap` | `mcf` | 2-D | Implemented, benchmarked, synthetically tested |
 | Minimum-$L^p$ norm | `unwrap_lp` | `lp` | 2-D | Implemented and synthetically tested |
 | Multigrid families | — | — | — | Not yet ported |
 
@@ -242,7 +256,7 @@ weighted by the confidence of each step, and normalises by $1/(1+S)$ so that a
 larger rating means a more trustworthy pixel. The equations above are therefore
 Parvaneh's own rating on their sorting scheme, and a numerical comparison
 against the original is a comparison of accuracy, not of identity. The
-distinction is repeated in [`references.md`](references.md), entry 10.
+distinction is repeated in [`references.md`](references.md), entry 11.
 
 ### Residues — `phase_residues`
 
@@ -296,13 +310,65 @@ quadratically. Regions are grown and then merged while a tree of "jump" edges
 is improved until no change reduces the number of discontinuities. This is the
 best choice for images containing genuine $2\pi$ cliffs (faults, steep
 topography) because it does not smear them the way a quadratic cost does. It is
-also the slowest of the six methods here, so pass `--quality min_gradient` and
-expect seconds rather than milliseconds on large rasters.
+also the slowest method here — 0.46 s on the 64x64 comparison in
+[`mathematics.md`](mathematics.md), section 13.6, against 0.40 s for `mask-cut`,
+0.38 s for `mcf` and 0.001 s for plain least squares — so pass
+`--quality min_gradient` and expect seconds rather than milliseconds on large
+rasters.
 
 **Where this comes from.** Flynn, "Two-dimensional phase unwrapping with minimum
 weighted discontinuity", *JOSA A* **14**, 2692–2701, 1997
 (<https://doi.org/10.1364/JOSAA.14.002692>). Derivation:
 [`mathematics.md`](mathematics.md), section 12.
+
+### Minimum-cost flow — `network_flow_unwrap`, CLI `mcf`
+
+The same objective as Flynn's — the fewest, lightest $2\pi$ jumps — but posed as
+a linear program and solved to optimality rather than reduced by a heuristic.
+One node is placed in every $2\times2$ cell of the phase grid, one arc on every
+pixel difference, and one extra ground node for "outside the data", which the
+arcs of the outermost cells reach;
+conservation of flow at a cell says that the four corrected steps around it add
+up to zero, so a feasible flow *is* a curl-free field, and the flow on an arc is
+the integer ambiguity of that pixel difference. Minimising $\sum w_e |k_e|$
+subject to those constraints gives the answer, either the one that counts whole
+turns (`--cost linear`) or the one that squares them (`--cost quadratic`).
+
+In practice:
+
+- It is exact, so its answer does not depend on the order in which pixels are
+  visited; running it twice returns the same field.
+- It places integer jumps instead of smearing them, and it never produces a
+  non-zero wrapped residual on a smooth scene where every other method leaves a
+  $\pi$ branch offset (section 16 of [`mathematics.md`](mathematics.md)).
+- Expect roughly $0.3$ s for a $64\times64$ synthetic scene with about 440
+  residues. The cost grows with the number of residues, not only with the number
+  of pixels: the solver starts from a feasible flow and then balances one unit
+  of charge at a time, so the augmentation count times the node count is the
+  quantity to watch ([`performance.md`](performance.md)).
+- `--weight` is accepted and turns into the arc costs $w_e$, the same
+  confidence raster the least-squares methods use; with a weight it is the best
+  of the six flow/`flynn`/`mask-cut` choices in the noisy experiment of
+  section 17 of [`mathematics.md`](mathematics.md).
+- Masked pixels drop the cells that touch them, so curl freeness is deliberately
+  *not* enforced across a masked corridor. Two islands separated by a mask are
+  then joined only through the ground node, and the offset between them is
+  settled by the cost of the edges that reach the ground rather than by the
+  island the traversal happened to start in. That is a global decision, but it
+  is still a decision: in the masked sixteen-seed experiment of section 16 of
+  [`mathematics.md`](mathematics.md) `mcf` lands the two islands one whole turn
+  apart in 4 of 16 runs, the same four seeds on which quality-guided, Goldstein
+  and mask cuts do it too, and never on the seeds where those three agree.
+
+**Where this comes from.** Costantini, "A novel phase unwrapping method based on
+network programming", *IEEE TGRS* **36**(3), 813–821, 1998
+(<https://doi.org/10.1109/36.673674>), for the dual network and the linear cost;
+Chen and Zebker, "Phase unwrapping for large SAR interferograms: statistical
+segmentation and generalized network models", *IEEE TGRS* **40**(8), 1709–1719,
+2002 (<https://doi.org/10.1109/TGRS.2002.802453>), for the quadratic cost that
+SNAPHU uses; and Ahuja, Magnanti and Orlin, *Network Flows*, Prentice Hall,
+1993, section 9.3 (Algorithm 9.5) for the augmenting-path solver itself.
+Derivation: [`mathematics.md`](mathematics.md), section 13.
 
 ### Minimum $L^p$ norm — `unwrap_lp`, CLI `lp`
 
@@ -332,6 +398,8 @@ Statistics*, 2nd ed., Wiley, 2009. Derivation:
 | Very large raster, smooth phase, speed matters | `quality-guided` |
 | Moderate noise, visible seams are unacceptable | `lp` |
 | Real $2\pi$ discontinuities that must not be smoothed | `flynn` |
+| Those discontinuities must be handled exactly, not heuristically | `mcf` |
+| Weighted, residue-heavy scene where the integer jumps are the unknown | `mcf --cost quadratic` |
 | Wrapped phase with many residues, one tree wanted | `reliability` |
 | Dense residues, low coherence | `ls` with a mask, then compare with `mask-cut` |
 | Want to know whether the scene is even unwrappable | `phase_residues` count |
@@ -380,8 +448,9 @@ Backend coverage is not uniform:
   kernel is rank-independent and is bit-identical to its Python reference; for a
   large volume the compiled kernel is roughly an order of magnitude faster,
   which is why `auto` selects it when available.
-- `goldstein`, `mask-cut` and `flynn` are fixed implementations and accept no
-  backend choice at all.
+- `goldstein`, `mask-cut`, `flynn` and `mcf` are fixed implementations and
+  accept no backend choice at all. The flow solver is pure Python on integer
+  arithmetic; a compiled kernel would change nothing about the result.
 
 ## The two unobservable quantities
 
@@ -424,6 +493,18 @@ explicitly:
   <https://doi.org/10.1364/AO.46.006623>, and the follow-up that avoids
   singularity loops, *Applied Optics* **48**(23), 4582–4596, 2009,
   <https://doi.org/10.1364/AO.48.004582>.
+- M. Costantini, "A novel phase unwrapping method based on network programming",
+  *IEEE Transactions on Geoscience and Remote Sensing* **36**(3), 813–821, 1998.
+  <https://doi.org/10.1109/36.673674> — the dual network behind
+  `network_flow_unwrap` and the `mcf` method.
+- C. W. Chen and H. A. Zebker, "Phase unwrapping for large SAR interferograms:
+  statistical segmentation and generalized network models", *IEEE Transactions
+  on Geoscience and Remote Sensing* **40**(8), 1709–1719, 2002.
+  <https://doi.org/10.1109/TGRS.2002.802453> — the network and the quadratic
+  cost model used by SNAPHU, the cost mode `--cost quadratic` implements.
+- R. K. Ahuja, T. L. Magnanti and J. B. Orlin, *Network Flows: Theory,
+  Algorithms, and Applications*. Prentice Hall, 1993. ISBN 978-0-13-617549-0. —
+  section 9.3, Algorithm 9.5, the successive shortest augmenting path solver.
 - The derivations of every equation above:
   [`mathematics.md`](mathematics.md).
 - The complete bibliography, including books, the numerical-methods sources and
