@@ -1,6 +1,6 @@
 # Notebooks
 
-Five Jupyter notebooks ship with Parvaneh. They are the teaching and
+Twenty-two Jupyter notebooks ship with Parvaneh. They are the teaching and
 reproducibility layer of the project: each one is fully self-contained, needs no
 external data, and produces every figure it shows from code in the notebook
 itself.
@@ -12,11 +12,47 @@ itself.
 | [`independent_synthetic_examples.ipynb`](../notebooks/independent_synthetic_examples.ipynb) | practical | every public algorithm family on one deterministic synthetic scene |
 | [`three_dimensional_unwrapping.ipynb`](../notebooks/three_dimensional_unwrapping.ipynb) | advanced | stacks and volumes: does the third axis actually help, measured against per-slice unwrapping and an independent baseline |
 | [`synthetic_insar_generator.ipynb`](../notebooks/synthetic_insar_generator.ipynb) | advanced | building a complete synthetic InSAR scene with exact ground truth |
+| [`phase_unwrapping_fundamentals.ipynb`](../notebooks/phase_unwrapping_fundamentals.ipynb) | introductory | the $2\pi$ ambiguity, wrapping, local differences, and a first reconstruction |
+| [`least_squares_and_weights.ipynb`](../notebooks/least_squares_and_weights.ipynb) | intermediate | the Poisson least-squares objective, weighting, and a noisy synthetic surface |
+| [`reliability_and_flow_notes.ipynb`](../notebooks/reliability_and_flow_notes.ipynb) | intermediate | a four-pixel residue, tree decisions, integer flow corrections, dual-network diagrams, and measured reconstruction errors |
+| [`competitor_methods.ipynb`](../notebooks/competitor_methods.ipynb) | advanced | additional algorithm comparisons |
 
 The two `chapter_*` notebooks follow the exposition of Ghiglia and Pritt
-(1998); all code in them is original. The other three build the project's own
+(1998); all code in them is original. The other notebooks build the project's own
 synthetic data, which is what makes quantitative statements about accuracy
 possible at all.
+
+## One worked notebook per method
+
+Each lesson starts with a small calculation, draws the algorithm's decisions,
+runs the public API, and changes one condition to measure its effect. Outputs
+are saved from actual Jupyter execution. All explanations are in English.
+
+| Method | Notebook | What you can see and calculate |
+|---|---|---|
+| Least squares, weighted and unweighted | [least_squares_and_weights](../notebooks/least_squares_and_weights.ipynb) | explicit four-pixel matrix, normal equations, squared endpoint weights |
+| Quality-guided paths | [quality_guided_unwrapping](../notebooks/quality_guided_unwrapping.ipynb) | parent proposal, numbered traversal, priority comparison |
+| Reliability sorting | [reliability_sorting](../notebooks/reliability_sorting.ipynb) | reliability arithmetic, edge sorting, four successive tree states |
+| Goldstein branch cuts | [goldstein_branch_cuts](../notebooks/goldstein_branch_cuts.ipynb) | residue charge, cut geometry, actual cut mask |
+| Quality-guided mask cuts | [quality_mask_cuts](../notebooks/quality_mask_cuts.ipynb) | mask growth and thinning, comparison on a clean ramp |
+| Flynn minimum discontinuity | [flynn_minimum_discontinuity](../notebooks/flynn_minimum_discontinuity.ipynb) | region shift, integer jumps, quality and sweep counts |
+| Minimum-cost flow | [minimum_cost_flow](../notebooks/minimum_cost_flow.ipynb) | four correction choices, dual graph, verified optimal single-cell cost |
+| Robust minimum Lp | [robust_lp_unwrapping](../notebooks/robust_lp_unwrapping.ipynb) | penalty curves, IRLS weights, exponent sweep |
+| Multigrid | [multigrid_unwrapping](../notebooks/multigrid_unwrapping.ipynb) | error scales, coarse grid, measured convergence versus one grid |
+| Graph cuts | [graph_cut_unwrapping](../notebooks/graph_cut_unwrapping.ipynb) | four binary move costs, integer labels, a volume check |
+| N-D cycle flow | [nd_cycle_flow](../notebooks/nd_cycle_flow.ipynb) | cube geometry, face counts, joint versus per-slice offsets |
+| Statistical costs | [statistical_cost_unwrapping](../notebooks/statistical_cost_unwrapping.ipynb) | uncertainty curves, coherence, convex versus capped-model reports |
+| Space-time priors | [space_time_priors](../notebooks/space_time_priors.ipynb) | temporal weights, circular mean, reference-pixel time series |
+| Extended minimum-cost flow | [extended_minimum_cost_flow](../notebooks/extended_minimum_cost_flow.ipynb) | acquisition triangle, both input APIs, final closure measurement |
+
+The combined [reliability and flow walkthrough](../notebooks/reliability_and_flow_notes.ipynb)
+adds a shared noisy-scene comparison with correction maps and cycle-error counts.
+Backend choices implement the same objectives; NumPy, BLAS, Numba, Cython and
+CuPy are not counted as different unwrapping methods.
+
+The source for the 14 method lessons is
+[`tools/build_method_notebooks.py`](../tools/build_method_notebooks.py).
+Regenerating them clears outputs, so execute them again before committing.
 
 ## Running them
 
@@ -57,7 +93,7 @@ if (SRC / 'parvaneh').is_dir() and str(SRC) not in sys.path:
 It works when the notebook is run from the repository root and from the
 `notebooks/` directory, and it is a harmless no-op after
 `python -m pip install -e .`, because then `parvaneh` is already importable.
-The other four notebooks use an equivalent spelling of the same two lines.
+The other notebooks use an equivalent repository-path bootstrap.
 
 ## Contents
 

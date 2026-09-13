@@ -1,6 +1,6 @@
 # 🦋 Parvaneh
 
-### Accelerated and reproducible phase unwrapping
+### Accelerated and reproducible N-dimensional phase unwrapping
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-263466.svg)](https://www.python.org/)
 [![Release: alpha](https://img.shields.io/badge/release-0.1.0a1-D94F88.svg)](https://github.com/mohseniaref/Parvaneh/releases)
@@ -163,9 +163,15 @@ status of each algorithm.
 
 ## Documentation
 
+Start with the [visual method notebooks](docs/notebooks.md#one-worked-notebook-per-method):
+14 separate lessons with hand calculations, graph diagrams, runnable examples,
+and saved figures cover every implemented unwrapping family, including volumes
+and time-series methods.
+
 | Page | Contents |
 |---|---|
 | [`docs/algorithms.md`](docs/algorithms.md) | the algorithm families, tuning, and offset invariance |
+| [`docs/api.md`](docs/api.md) | Python API reference with signatures, dimensions, and return values |
 | [`docs/mathematics.md`](docs/mathematics.md) | the equations behind every method, derived for a first course in linear algebra |
 | [`docs/references.md`](docs/references.md) | the full bibliography: books, papers with DOIs, and the software compared against |
 | [`docs/cli.md`](docs/cli.md) | command-line manual: files, masks, backends, exit codes |

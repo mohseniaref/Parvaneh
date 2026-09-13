@@ -1,4 +1,4 @@
-"""Accelerated and reproducible phase unwrapping."""
+"""Accelerated and reproducible N-dimensional phase unwrapping."""
 
 __version__ = "0.1.0a1"
 
@@ -16,6 +16,13 @@ from .flynn import flynn_unwrap
 from .reliability import ReliabilityInfo, pixel_reliability, reliability_unwrap
 from .network_flow import NetworkFlowInfo, network_flow_unwrap
 from .multigrid import MultigridInfo, multigrid_unwrap
+from .flow_nd import FlowNDInfo, flow_nd_unwrap
+from .graph_cut import GraphCutInfo, puma_unwrap
+from .stat_costs import StatCostInfo, StatCostParams, stat_cost_unwrap
+from .space_time import (SpaceTimeInfo, SpaceTimeParams, SpaceTimePriors,
+                         space_time_priors, space_time_unwrap)
+from .emcf import (EmcfInfo, emcf_cycles, emcf_links, emcf_unwrap,
+                   emcf_unwrap_interferograms)
 from .raster import (RasterError, RasterMeta, NoRasterBackendError,
                      read_raster, raster_backend, write_raster)
 
@@ -34,6 +41,13 @@ __all__ = [
     "pixel_reliability", "reliability_unwrap", "ReliabilityInfo",
     "network_flow_unwrap", "NetworkFlowInfo",
     "multigrid_unwrap", "MultigridInfo",
+    "flow_nd_unwrap", "FlowNDInfo",
+    "puma_unwrap", "GraphCutInfo",
+    "stat_cost_unwrap", "StatCostParams", "StatCostInfo",
+    "space_time_priors", "space_time_unwrap", "SpaceTimeParams",
+    "SpaceTimePriors", "SpaceTimeInfo",
+    "emcf_links", "emcf_cycles", "emcf_unwrap", "emcf_unwrap_interferograms",
+    "EmcfInfo",
     "read_raster", "write_raster", "raster_backend", "RasterMeta",
     "RasterError", "NoRasterBackendError",
 ]

@@ -600,7 +600,7 @@ def test_parser_defaults_match_the_documented_interface():
     assert args.quality == "min_gradient"
     assert args.backend == "auto"
     assert args.workers == -1
-    assert args.max_iter == 100
+    assert args.max_iter is None
     assert args.tol == 1e-8
     assert args.cost == "linear"
     assert args.dtype == "<f4"
