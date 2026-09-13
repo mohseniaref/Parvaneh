@@ -16,6 +16,7 @@ identify the mathematical family, not a runtime dependency.
 | Flynn minimum discontinuity | `flynn_unwrap` | Independent region optimization | Phase congruence and deterministic convergence tests |
 | Minimum-$L^p$ norm | `unwrap_lp` | IRLS with matrix-free weighted solves | $p=2$ equivalence, finite objective, iteration tests |
 | Minimum-cost flow | `network_flow_unwrap` | Dual-network flow solved by successive shortest augmentations | Optimality cross-check against `scipy.optimize.linprog`, synthetic charge recovery, mask and weight behaviour |
+| Multigrid | `multigrid_unwrap` | Geometric grid hierarchy relaxed by red-black Gauss–Seidel V-cycles | Agreement with the least-squares solver on the same normal equations, adjointness of the transfer operators, cycle and sweep accounting, 1-D/2-D/3-D recovery, measured convergence limits |
 | Difference/jump diagnostics | `surface_difference`, `discontinuity_map` | Native NumPy | Deterministic offset and jump tests |
 
 “Independent” means the installed package executes only code distributed in

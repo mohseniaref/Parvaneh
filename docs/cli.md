@@ -87,6 +87,10 @@ available methods:
                     backends: no backend choice
   mcf             minimum-cost flow on the dual network (Costantini)
                     backends: no backend choice
+  lp              minimum-Lp, iteratively reweighted least squares
+                    backends: no backend choice
+  multigrid       V-cycles over a hierarchy of grids; the ls answer again
+                    backends: no backend choice
   ...
 compiled kernels on this machine:
   numpy    available
@@ -294,19 +298,23 @@ raw input, `--shape`. `--shape` always takes exactly two numbers, because a raw
 raster is a single two-dimensional image; a weight for a stack is a `.npy`/`.npz`
 array with the stack's shape.
 
-Only `ls`, `reliability` and `mcf` read a weight. For the flow solver the weight
-becomes the cost of an edge, so a low-confidence pixel difference is cheap to
+Only `ls`, `reliability`, `mcf` and `multigrid` read a weight. For the flow
+solver the weight becomes the cost of an edge, so a low-confidence pixel
+difference is cheap to
 jump exactly where it is unreliable. Passing `--weight` to any other method is
 not an error — those methods build their own quality map — but it would be easy
 to believe coherence steered the result when it did not, so the run says so:
 
 ```text
-note     --method goldstein builds its own quality map and ignores --weight (weights are used by: ls, reliability, mcf)
+note     --method goldstein builds its own quality map and ignores --weight (weights are used by: ls, reliability, mcf, multigrid)
 ```
 
 For `ls` a mask is simply converted into a 0/1 weight, so `--mask` and
 `--weight` are the same kind of information; if you pass both, the weight wins.
-For `reliability`, a pixel rated at zero confidence — because the mask is zero
+`multigrid` solves the same weighted system as `ls`, so it applies the same
+rule: the weight becomes zero where the mask is false. For `reliability`, a
+pixel rated at zero
+confidence — because the mask is zero
 there, or because its weight is zero — is cut out of the tree entirely rather
 than assigned a value. For the path-following methods (`quality-guided`,
 `goldstein`, `mask-cut`, `flynn`) a mask keeps the algorithm away from bad
@@ -377,8 +385,8 @@ parvaneh unwrap wrapped.npy --method mcf --cost quadratic --weight coh.npy -o ou
 `--backend auto` picks the fastest kernel that is both available on this
 machine and supported by the chosen method. Naming a backend that is missing or
 unsupported is an error with a message that lists the usable alternatives. The
-methods without a compiled kernel (`goldstein`, `mask-cut`, `flynn`, `mcf`, `lp`)
-ignore `--backend` and say so on stderr.
+methods without a compiled kernel (`goldstein`, `mask-cut`, `flynn`, `mcf`,
+`lp`, `multigrid`) ignore `--backend` and say so on stderr.
 
 ## Speed
 
@@ -387,7 +395,7 @@ The least-squares solver is iterative, so it has two knobs:
 | Option | Meaning | Default |
 |---|---|---|
 | `--workers` | threads used by the DCT preconditioner; `-1` uses every core | `-1` |
-| `--max-iter` | iteration cap | `100` |
+| `--max-iter` | iteration cap; for `--method multigrid`, V-cycles | `100` |
 | `--tol` | relative residual target; **larger is faster** | `1e-8` |
 
 ```bash
@@ -397,7 +405,10 @@ parvaneh unwrap big.raw --shape 4096 4096 --tol 1e-6 --max-iter 40 -o big-u.raw
 `--tol 1e-8` is converged to the point where further iterations change nothing
 you can see. `1e-6` and `1e-5` are common production choices for large scenes
 and can cut the runtime substantially. These three options only affect `ls`
-(and the inner solves of `lp`).
+(and the inner solves of `lp`). `--max-iter` and `--tol` also apply to
+`--method multigrid`, where `--max-iter` counts V-cycles and `--workers` has no
+effect; `multigrid` is not the fast path even so — see
+[`performance.md`](performance.md).
 
 ## The offset question
 
@@ -460,9 +471,10 @@ parvaneh unwrap wrapped.npy --info -o out.npy | jq -r .seconds
 ```
 
 Always present: `method`, `backend` (`null` for the methods that have no
-backend choice at all; `mcf` reports the `python` engine it always uses),
-`center`, `shape`, `seconds`, `input`, `output`. Then a
-method-specific block:
+backend choice at all; `mcf` reports the `python` engine it always uses, and
+`multigrid` reports `numpy`, the only engine it has), `center`, `shape`,
+`seconds`, `input`, `output`. `seconds` is the wall time of the whole run.
+Then a method-specific block:
 
 | Method | Extra keys |
 |---|---|
@@ -473,6 +485,14 @@ method-specific block:
 | `flynn` | `iterations` |
 | `mcf` | `cost`, `pixels`, `nodes`, `edges`, `residues`, `augmentations`, `components`, `max_jump`, `ground_imbalance`, `total_cost` |
 | `lp` | `p`, `outer_iterations`, `inner_iterations`, `objective`, `relative_change` |
+| `multigrid` | `weights` (`uniform`, `mask`, or `custom`), `levels`, `coarsest`, `cycles`, `sweeps`, `relative_residual`, `converged`, `residuals` |
+
+`residuals` is the one array-valued key: the relative residual of the finest
+grid after each V-cycle, starting from the value before the first one. It is
+there so a run can be judged without rerunning it: a history that falls by a
+roughly constant factor per cycle behaved as a multigrid solver should, and a
+history that flattens out says the hierarchy has stopped helping, which is what
+`converged: false` records in one number.
 
 `backend` reports the engine that **actually ran**, not the one you asked for.
 The compiled kernels (`numba`, `cython`, `cupy`) are written for two-dimensional
@@ -483,6 +503,9 @@ reads `numpy` — which is also what the progress line on stderr says
 is the same code path, just the general one. The `reliability` method is the
 exception among the backend-aware ones in that its compiled merge loop is
 rank-agnostic, so it keeps the requested backend on a stack.
+
+A method that has no backend choice of its own prints `-` there; `--info` still
+names the engine that ran, as listed above.
 
 For `mcf` the numbers describe the network that was built and solved:
 `nodes` is one per $2\times2$ cell plus the ground node, `edges` one per pixel
@@ -560,6 +583,12 @@ family here: it joins pixels along a maximum-reliability tree, so a residue pair
 is absorbed where its two ends are fused together instead of being integrated
 into a global field.
 
+`multigrid` is deliberately not in that loop: it solves the same weighted
+least-squares system as `ls`, so its output is the `ls` file up to the
+tolerance, and comparing the two measures the solver rather than the model.
+Compare their `--info` blocks when you want to know which solver suits your
+data.
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |
@@ -570,7 +599,7 @@ into a global field.
 | `error: mask has shape … but the input has shape …` | the mask was written for a different crop or a different `--order` |
 | `error: --backend numba only supports --quality min_gradient` | use `--backend python`, or `--quality min_gradient` |
 | `error: backend 'cython' is not available on this machine (usable here: numpy, numba)` | that kernel is not built/installed here; use a listed one or `--backend auto` |
-| `error: --method goldstein unwraps a two-dimensional image, but cube.npy has shape 24x32x4` | the input is a stack and that method is not; use `--method ls` or `--method reliability`, or unwrap one slice at a time |
+| `error: --method goldstein unwraps a two-dimensional image, but cube.npy has shape 24x32x4` | the input is a stack and that method is not; use `--method ls`, `--method reliability` or `--method multigrid`, or unwrap one slice at a time |
 | `error: a georeferenced raster holds one two-dimensional band, so cube.tif cannot store a 3-dimensional result` | a stack has nowhere to go in a single-band file; write `-o cube.npy` or `-o cube.npz` |
 | `error: a headerless raster holds one two-dimensional image, so cube.raw cannot store a 3-dimensional result` | same, for `--shape`-described raw output; use `.npy`/`.npz`, which record their own shape |
 | `error: --shape takes two numbers, ROWS COLS … (got 3 numbers)` | `--shape` describes one raw image; a stack belongs in `.npy` or `.npz` |

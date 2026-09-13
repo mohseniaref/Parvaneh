@@ -323,7 +323,10 @@ $$
 
 Depending on the boundary conditions and weights, the discrete system can be
 solved by FFT or DCT methods, multigrid, conjugate gradient, or preconditioned
-conjugate gradient.
+conjugate gradient. All four appear in this project as solvers or as the thing a
+solver is measured against; the multigrid one is derived in section 18 of
+[`mathematics.md`](mathematics.md), and the transfer operators it rests on are
+entries 6 to 8 of [`references.md`](references.md).
 
 Least squares produces a globally consistent smooth surface, but an isolated
 large gradient inconsistency can be distributed across a broad region. This is

@@ -31,6 +31,7 @@ the wording on this page were written for this project.
 15. [What each method guarantees](#15-what-each-method-guarantees)
 16. [One worked experiment with all ten variants](#16-one-worked-experiment-with-all-ten-variants)
 17. [When the noise is strong: a discriminating experiment](#17-when-the-noise-is-strong-a-discriminating-experiment)
+18. [Multigrid: one equation on many grids](#18-multigrid-one-equation-on-many-grids)
 
 ---
 
@@ -625,7 +626,7 @@ unreliability from the four **second** differences in its $3\times3$
 neighbourhood, squared and summed, and give an edge the **sum** of its two
 endpoints' values, sorted in the opposite sense. What is taken from them is the
 sorting scheme, not the printed formula; see
-[`references.md`](references.md), entry 11.
+[`references.md`](references.md), entry 14.
 
 ## 11. Path following and branch cuts
 
@@ -1312,6 +1313,244 @@ and the methods are cited in sections 5 to 13. The residual counts, the true
 step size and the RMSE values were all recomputed for this page from the script
 shown; the two seeds are the ones used to check that a conclusion is not an
 artefact of one noise realisation.
+
+## 18. Multigrid: one equation on many grids
+
+Sections 5 and 6 solved the normal equations once and for all: assemble the
+weighted Laplacian $L$ of the edges, assemble the divergence $f$, solve
+$L u = f$. This section solves the *same* system, and it produces the same
+answer. What changes is how the work is done. The cosine transform of section 6
+inverts $L$ in one step when the weights are uniform, so a weighted problem is
+the only hard one; a hierarchy of grids attacks that problem without a
+transform at all, which is also what makes it the only one of the two solvers
+that extends to a domain which is not a rectangle. That is the last paragraph
+of this section.
+
+### 18.1 One grid is quick on the rough half of the error
+
+Take the simplest iteration on $L u = f$: visit every pixel in turn and set it
+to whatever value makes its own equation hold. For the reflecting stencil of
+section 5 that update is
+
+$$u_p \leftarrow u_p + \frac{f_p - (L u)_p}{L_{pp}},$$
+
+which is Gauss--Seidel, and it is exactly the smoother a multigrid cycle uses.
+
+Section 6 supplies the tool for seeing what this iteration does to the *error*.
+In one dimension with the reflecting rule at both ends, the mode
+$v_i = \cos(\theta(i + \tfrac12))$ with $\theta = \pi k/N$ satisfies
+$(L v)_i = 2(1 - \cos\theta) v_i$, and the diagonal of $L$ is $2$ away from the
+border, so a Jacobi step multiplies that mode by
+
+$$1 - \frac{2(1 - \cos\theta)}{2} = \cos\theta .$$
+
+Two consequences follow, and between them they are the whole argument for
+multigrid.
+
+* **Rough modes die.** A mode that alternates from sample to sample has
+  $\theta \to \pi$, so $\cos\theta \to -1$ and a sweep very nearly cancels it;
+  Gauss--Seidel does better still, and for it the same mode's factor approaches
+  $0$ rather than $-1$, because the samples it has just updated are the
+  neighbours of the ones it is about to update.
+* **Smooth modes survive.** The slowest mode has $\theta = \pi/N$, so its
+  factor is $1 - O(N^{-2})$, just short of one. Reducing it by ten orders of
+  magnitude therefore needs a number of sweeps proportional to $N^2$ — that is,
+  proportional to the number of pixels, not to the side of the image.
+
+Measured on this implementation, with a zero right-hand side so that the sweep
+acts on the error alone, one sweep of a $128\times128$ uniform-weight grid does
+this to a single mode:
+
+| $k$ | $\theta/\pi$ | decay in one sweep |
+| --- | --- | --- |
+| 1 | 0.0078 | $0.9998$ |
+| 8 | 0.0625 | $0.9854$ |
+| 32 | 0.2500 | $0.7883$ |
+| 64 | 0.5000 | $0.3702$ |
+| 127 | 0.9922 | $-0.0015$ |
+
+The roughest mode is gone after one sweep; the smoothest needs of order $10^5$
+of them. The measured factors are not exactly the $\cos\theta$ of the model
+problem, because the border samples of a finite array update with a smaller
+diagonal than the interior ones, so the mode is not an eigenvector of the sweep
+— the *shape* of the table is the point, near $1$ at the smooth end and near
+$0$ at the rough end.
+
+This is why a single grid cannot be rescued by patience. The same smoother on
+the finest grid with no hierarchy at all is published as a baseline: after 500
+sweeps a $128\times128$ uniform scene is at a relative residual of
+$1.8\times10^{-3}$ and a $512\times512$ one at $3.9\times10^{-4}$, with a
+measured contraction rate of 0.95 to 0.99 per sweep. That the larger grid looks
+*better* is a trap: the 500 sweeps are spent removing the rough error, which
+dies in the first few of them, and the residual at the end is carried by the
+smooth tail the table above describes. On the smallest grid of the sweep,
+$16\times16$, the baseline does converge — the mask case takes 226 sweeps —
+because $N^2$ sweeps is affordable when $N$ is small.
+
+### 18.2 A bump is rough on a coarse grid
+
+The smoother fails on smooth error for a local reason: information moves one
+sample per step, and no small neighbourhood can tell a long-wavelength bump
+from a constant. Multigrid's observation is that smoothness is *relative to the
+grid*. A bump that covers a quarter of a $128\times128$ image covers half of a
+$64\times64$ one and all of a $32\times32$ one. In the notation of section 6, a
+mode of wavenumber $\theta$ on a grid of spacing $h$ has wavenumber $2\theta$
+on the grid of spacing $2h$, because the same physical wavelength now covers
+half as many samples. The slowest mode of the fine grid is therefore the
+half-way mode of the next grid down, and that one a sweep *does* damp.
+
+The recipe, and the one this package implements, is the **coarse-grid
+correction**:
+
+1. **Smooth** the fine grid a few times. This is cheap, and it removes the
+   rough part of the error.
+2. **Measure** what is left. The residual $r = f - L u$ is zero exactly where
+   $u$ is right, and the error $e = u^{*} - u$ satisfies $L e = r$ — the same
+   operator, a different right-hand side.
+3. **Restrict** $r$ to the next grid down and solve there for a correction.
+   This pays off twice: the residual is smooth, so the mode that stalled the
+   fine sweep is a dampable mode one level down; and the coarse grid has a
+   quarter of the samples in two dimensions, or an eighth in three, so a sweep
+   there costs proportionally less.
+4. **Prolong** the coarse correction back to the fine grid and add it.
+5. **Smooth** again, because a coarse correction is only approximately a
+   correction.
+
+Entering the recursion at step 3 and returning from it once the coarsest grid
+is reached gives a **V-cycle**: the order of visits traces a V through the
+levels. The recursion bottoms out on a grid small enough that many sweeps there
+cost nothing (50 in this implementation).
+
+One detail in step 3 matters. The unknown being solved for is the *correction*,
+not the solution, so the coarse level starts from zero and the coarse
+right-hand side is the restricted residual — nothing of the fine $u$ is copied
+down. And since a constant is invisible to $L$ (section 5), a right-hand side
+with a nonzero average contains a component the coarse solve can never reduce,
+so that average is removed before the restriction.
+
+### 18.3 The grids have to fit together exactly
+
+Restriction takes a fine array to a coarse one, prolongation the other way, and
+both have to be chosen so that the coarse problem is the *same* equation
+without the fine detail. The choices this implementation makes are visible in
+the two properties the tests pin down: the coarse problem must not deform the
+image, and its scale must match the fine one level after level.
+
+**Restriction is the transpose of interpolation**, $R = \tfrac12 P^{\mathsf T}$
+along each axis. In the interior of an axis that makes the coarse sample a full
+weighting $[\tfrac14, \tfrac12, \tfrac14]$ of its fine neighbours, rather than
+plain injection, which would let rough residual components *alias* into smooth
+ones on the coarse grid — the correction would then chase an error that is not
+there (the aliasing argument is Press *et al.* 2007, section 19.6). At the ends
+adjointness leaves the weights asymmetric — $\tfrac34$ of a sample at the first
+coarse position and $\tfrac54$ at the last, on an eight-sample axis — because
+the interpolation mirrors the last fine sample onto the last coarse one, so
+that column of the interpolation matrix is twice as heavy.
+
+**Prolongation is linear interpolation**: an even fine sample copies the coarse
+sample it sits on, an odd one averages its two coarse neighbours. With a
+reflecting problem the interpolation has to reproduce the reflection too, or
+the correction would dent the border; the mirrored end above does exactly that.
+
+**The coarse confidences are averaged with those same weights, then divided by
+the weights themselves** — $\tilde w = Rw / R\mathbf{1}$, the row-normalised
+restriction. The division is what keeps a uniform confidence of one equal to
+one on every level. Without it the two-dimensional restriction of ones would be
+$0.5625$ at a corner and $1.5625$ diagonally opposite, every level would dent
+its own border, the coarse problem would be a different equation from the fine
+one, and the contraction per cycle would grow with the grid size instead of
+staying near $0.2$ as measured in section 18.4.
+
+**Coarse edge weights follow the same rule as fine ones**, the smaller of the
+two end confidences squared, from section 7. The hierarchy therefore
+re-discretises the objective rather than borrowing coefficients: the coarse
+grid gets the same kind of problem, with the same edge rule, at a spacing twice
+as large. That is also where the scale factor comes from — the code divides its
+per-level operator scale by four per level, because doubling the spacing
+shrinks the Laplacian by $4$ in any number of dimensions. Without that division
+every coarse correction would come back off by $4^{\ell}$ and the cycle would
+diverge.
+
+A hierarchy can be built the other way, *variationally*, by forming the coarse
+operator from the fine one as $L_{\ell+1} = R L_\ell P$. That is exact for the
+transfers, but it produces a wider stencil, which is a real cost on the coarse
+sweeps this design depends on. Re-discretising keeps a five-point stencil, and
+its price appears where the weights jump between neighbouring pixels: there the
+coarse operator and the fine one no longer describe the same problem, and the
+correction is not quite the one the fine grid needs. How much of section 18.4's
+slow cases that explains is *not* among the measurements in this document, so
+that section reports the stalls as a limit of the solver rather than as a
+diagnosis. The levels also lose the fine structure of the weights before the
+operator question is even reached, because a coarse confidence is an average of
+the fine ones; on a cut that is the first thing to check.
+
+### 18.4 What the hierarchy does, measured
+
+The point of the levels is that the number of cycles stops caring how large the
+grid is. Measured with two smoothing sweeps a side, noise $\sigma = 0.6$ rad,
+seed 11, a relative residual target of $10^{-10}$ and a 200-cycle budget:
+
+| Size | Weight field | MG cycles | MG time | CG iterations | CG time | Ratio |
+| --- | --- | --- | --- | --- | --- | --- |
+| 16x16 | uniform | 12 | 0.062 s | 1 | under 0.001 s | 129x |
+| 16x16 | mask | 16 | 0.083 s | 16 | 0.002 s | 41x |
+| 128x128 | uniform | 13 | 0.479 s | 1 | 0.005 s | 96x |
+| 128x128 | mask | 79 | 1.924 s | 39 | 0.044 s | 44x |
+| 256x256 | uniform | 13 | 0.864 s | 1 | 0.018 s | 47x |
+| 256x256 | mask | 155 | 9.580 s | 56 | 0.675 s | 14x |
+| 512x512 | uniform | 12 | 1.914 s | 1 | 0.051 s | 37x |
+| 512x512 | mask | 200, stalled at 8.0e-09 | 31.933 s | 72 | 3.104 s | 10x |
+
+Three readings:
+
+* **On uniform weights the cycle count is flat**: 12, 13, 13 and 12 across a
+  thousand-fold change in the number of pixels, where plain relaxation needs
+  sweeps proportional to that number. This is the property being bought, and it
+  is the reason the hierarchy is worth having at all. The time per cycle still
+  grows with the pixel count, so the totals rise from 0.062 s to 1.914 s, and
+  the margin over the transform-preconditioned conjugate gradient narrows from
+  $129\times$ at $16\times16$ to $37\times$ at $512\times512$.
+* **A cycle is not a sweep, and the conversion is exact.** One V-cycle at two
+  smoothing sweeps a side costs
+  $2s\left(1 + \tfrac14 + \tfrac1{16} + \cdots\right) = \tfrac{8s}{3} \approx
+  5.33$ sweeps of the finest grid; the benchmark stores that as
+  `fine_sweep_equivalents` per cell, and it reads 5.34 at $128\times128$ and
+  above (6.03 at $16\times16$, where the coarsest level is a larger share of
+  the total). The contraction is 0.17 to 0.23 per *cycle* on the uniform field,
+  against 0.95 to 0.99 per *sweep* for the hierarchy-free baseline: a cycle is
+  not fast, it is worth five sweeps of the finest grid, it costs less than five
+  sweeps, and it reduces an error that no such number of sweeps reduces.
+* **The mask costs cycles**: 16, 79, 155, and then a stall at
+  $8.0\times10^{-9}$ at $512\times512$; the thin-line and blocky fields never
+  reach the target at all, and one sweep a side on the blocky field diverges
+  outright. That is a documented limit of this solver rather than an accident:
+  see the matrix in [`algorithms.md`](algorithms.md) for when to use `ls`
+  instead. Which part of the hierarchy is responsible is left open here — the
+  coarse operator of section 18.3 is one candidate, the smoother's behaviour on
+  a strongly anisotropic weight field is another — and no claim in this document
+  rests on the choice.
+
+One further measurement is worth stating here, because it is easy to mistake for
+an error. Both solvers minimise the same objective, and on the masked scene they
+agree on every cell that carries data to $2.0\times10^{-8}$ rad while the
+whole-grid distance between them is $8.7\times10^{-2}$ rad. The difference lives
+entirely in the cells the weights have disconnected, where the objective says
+nothing about the answer and the two solvers are therefore free to differ. The
+benchmark reports both distances, `known_*` and `aligned_*`, for that reason.
+
+**Where this comes from.** The two-grid picture, the V-cycle, and the smoothing
+and approximation properties are Briggs, Henson & McCormick (2000), chapters
+3–4, and Trottenberg, Oosterlee & Schuller (2001), sections 2.3, 2.4, 5.3 and
+7; the latter is also where the transfer operators are set out, where the
+variational coarse operator $L_{\ell+1} = R L_\ell P$ is defined, and where the
+remark on re-discretisation under large coefficient jumps is made. Full
+weighting as the answer to aliasing is Press *et al.* (2007), section 19.6. The
+use of multigrid for phase unwrapping itself is Pritt (1996), and the book
+treatment is Ghiglia & Pritt (1998), chapter 5. The numbers in section 18.4
+come from [`benchmark_multigrid.py`](../benchmarks/benchmark_multigrid.py),
+whose `--modes` probe is the source of the decay table in section 18.1; the
+equation being solved is the one derived in section 5, and the cosine modes are
+those of section 6.
 
 ## Where to go next
 

@@ -44,6 +44,7 @@ from ..flynn import flynn_unwrap
 from ..goldstein import goldstein_unwrap, mask_cut_unwrap
 from ..io import read_raw_raster, write_raw_raster
 from ..minimum_norm import unwrap_lp
+from ..multigrid import multigrid_unwrap
 from ..network_flow import COST_MODES, network_flow_unwrap
 from ..path_following import quality_guided_unwrap
 from ..quality import (derivative_variance_quality, max_gradient_quality,
@@ -64,6 +65,7 @@ METHODS = (
     ("flynn", "Flynn minimum-discontinuity network"),
     ("mcf", "minimum-cost flow on the dual network (Costantini)"),
     ("lp", "minimum-Lp, iteratively reweighted least squares"),
+    ("multigrid", "V-cycles over a hierarchy of grids; the ls answer again"),
 )
 
 #: Backends each method can actually run on, best first.  An empty tuple means
@@ -79,16 +81,17 @@ METHOD_BACKENDS = {
     "flynn": (),
     "mcf": (),
     "lp": (),
+    "multigrid": (),
 }
 
 #: Methods that unwrap a stack of any rank, not only a single two-dimensional
 #: image.  Everything else is a two-dimensional algorithm and is told so when
 #: handed a cube, rather than failing somewhere deep inside.
-ND_METHODS = ("ls", "reliability")
+ND_METHODS = ("ls", "reliability", "multigrid")
 
 #: Methods that can use ``--weight``.  The others build their own quality map,
 #: so a weight handed to them would be silently dropped.
-WEIGHT_METHODS = ("ls", "reliability", "mcf")
+WEIGHT_METHODS = ("ls", "reliability", "mcf", "multigrid")
 
 
 def build_parser(add_help=True):
@@ -114,6 +117,9 @@ examples:
 
   # the same residues handled exactly, as a minimum-cost flow on the dual net
   parvaneh unwrap noisy.npy --method mcf --cost linear -o unwrapped.npy
+
+  # the least-squares answer again, from a multigrid hierarchy
+  parvaneh unwrap noisy.npy --method multigrid -o unwrapped.npy
 
   # a cube of interferograms, unwrapped jointly along all three axes
   parvaneh unwrap cube.npy --method ls -o cube-unwrapped.npy
@@ -168,7 +174,8 @@ examples:
     aux_group.add_argument("--mask-dtype", default="<f4",
                            help="dtype of a headerless raw --mask (default: <f4)")
     aux_group.add_argument("--weight", help="nonnegative weight raster "
-                                            "(--method ls or reliability)")
+                                            "(--method ls, reliability, mcf "
+                                            "or multigrid)")
     aux_group.add_argument("--weight-dtype", default="<f4",
                            help="dtype of a headerless raw --weight (default: <f4)")
 
@@ -177,7 +184,8 @@ examples:
                              help="threads for the DCT preconditioner; -1 uses "
                                   "every core (default: -1)")
     speed_group.add_argument("--max-iter", type=int, default=100,
-                             help="least-squares iteration cap (default: 100)")
+                             help="least-squares iteration cap, or V-cycles for "
+                                  "--method multigrid (default: 100)")
     speed_group.add_argument("--tol", type=float, default=1e-8,
                              help="least-squares relative residual target; larger "
                                   "is faster and still usually invisible "
@@ -598,6 +606,28 @@ def _run_method(args, phase, backend, mask, weight):
         result, info = network_flow_unwrap(phase, weight, mask=mask,
                                            cost=args.cost, return_info=True)
         return result, dataclasses.asdict(info)
+
+    if method == "multigrid":
+        # The same normal equations as "ls", solved by V-cycles instead of by
+        # conjugate gradients.  --max-iter caps the cycles, which are cheap but
+        # not unlimited: see docs/performance.md for when "ls" is the better
+        # choice of the two.
+        result, info = multigrid_unwrap(phase, weight, mask=mask,
+                                        max_cycles=args.max_iter, tol=args.tol,
+                                        return_info=True)
+        if not info.converged:
+            log("note     multigrid stopped after %d V-cycles at a relative "
+                "residual of %.1e; sharp-edged weights suit --method ls better"
+                % (info.cycles, info.relative_residual))
+        detail = dataclasses.asdict(info)
+        # Under "--info" the key "seconds" is the wall time of the whole run,
+        # which is what every other method reports there, so the solver's own
+        # timing does not belong under it.  MultigridInfo.seconds stays
+        # available to library users.
+        detail.pop("seconds")
+        return result, {"weights": "custom" if args.weight is not None
+                        else ("mask" if args.mask is not None else "uniform"),
+                        **detail}
 
     result, info = unwrap_lp(phase, p=args.p, epsilon=args.epsilon,
                              outer_iter=args.outer_iter,

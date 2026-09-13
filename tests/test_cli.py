@@ -19,8 +19,8 @@ import numpy as np
 import pytest
 from parvaneh import __version__, make_synthetic, wrap_phase
 from parvaneh.cli import main
-from parvaneh.cli.unwrap import (METHOD_BACKENDS, METHODS, build_parser,
-                                 center_circular)
+from parvaneh.cli.unwrap import (METHOD_BACKENDS, METHODS, ND_METHODS,
+                                 build_parser, center_circular)
 from parvaneh.raster import raster_backend, read_raster
 
 METHOD_NAMES = [name for name, _ in METHODS]
@@ -672,6 +672,95 @@ def test_mcf_rejects_an_unknown_cost(scene, capsys):
 
 
 # --------------------------------------------------------------------------
+# multigrid is wired like any other method
+# --------------------------------------------------------------------------
+
+def test_multigrid_agrees_with_the_answer_key(scene, tmp_path, capsys):
+    """The command line reaches the hierarchy solver and returns a surface."""
+    _, wrapped, path = scene
+    out_path = tmp_path / "multigrid.npy"
+    status, _, err = run([str(path), "--method", "multigrid",
+                          "-o", str(out_path)], capsys)
+    assert status == 0, err
+    result = np.load(str(out_path))
+    assert np.abs(wrap_phase(result - wrapped)).max() < 1e-5
+
+
+def test_multigrid_reports_the_hierarchy_it_solved(scene, tmp_path, capsys):
+    _, _, path = scene
+    status, out, err = run([str(path), "--method", "multigrid", "-o",
+                            str(tmp_path / "multigrid.npy"), "--info"], capsys)
+    assert status == 0, err
+    summary = json.loads(out)
+    assert summary["method"] == "multigrid"
+    assert summary["backend"] == "numpy"
+    assert summary["weights"] == "uniform"
+    assert summary["converged"] is True
+    assert summary["cycles"] == len(summary["residuals"])
+    assert summary["coarsest"] == [2, 2]        # 24x32, halved four times
+    assert summary["levels"] == 5
+    assert summary["relative_residual"] < 1e-8
+
+
+def test_multigrid_solves_the_same_equations_as_ls(scene, tmp_path, capsys):
+    """Both methods minimise the same weighted least-squares objective."""
+    _, wrapped, path = scene
+    np.save(str(tmp_path / "weight.npy"), np.ones(wrapped.shape))
+    outputs = []
+    for method in ("ls", "multigrid"):
+        out_path = tmp_path / ("%s.npy" % method)
+        status, _, err = run([str(path), "--method", method, "--weight",
+                              str(tmp_path / "weight.npy"),
+                              "-o", str(out_path), "--tol", "1e-12"], capsys)
+        assert status == 0, err
+        outputs.append(np.load(str(out_path)))
+    # Two independent solvers, so they agree to their convergence tolerance
+    # rather than bit for bit.
+    assert np.abs(wrap_phase(outputs[0] - outputs[1])).max() < 1e-4
+
+
+def test_multigrid_uses_a_mask_instead_of_dropping_it(scene, tmp_path, capsys):
+    """``multigrid`` is in WEIGHT_METHODS, so a mask must reach the solver."""
+    _, wrapped, path = scene
+    mask = np.ones(wrapped.shape, dtype=bool)
+    mask[:, :4] = False
+    np.save(str(tmp_path / "mask.npy"), mask)
+    out_path = tmp_path / "out.npy"
+    status, out, err = run([str(path), "--method", "multigrid", "--mask",
+                            str(tmp_path / "mask.npy"), "-o", str(out_path),
+                            "--info"], capsys)
+    assert status == 0, err
+    assert json.loads(out)["weights"] == "mask"
+    result = np.load(str(out_path))
+    assert np.isnan(result[:, :4]).all()
+    assert np.isfinite(result[:, 4:]).all()
+
+
+def test_multigrid_accepts_a_weight_map(scene, tmp_path, capsys):
+    _, wrapped, path = scene
+    np.save(str(tmp_path / "weight.npy"), np.ones(wrapped.shape))
+    status, out, err = run([str(path), "--method", "multigrid", "--weight",
+                            str(tmp_path / "weight.npy"), "-o",
+                            str(tmp_path / "out.npy"), "--info"], capsys)
+    assert status == 0, err
+    assert "ignores" not in err
+    assert json.loads(out)["weights"] == "custom"
+
+
+def test_multigrid_max_iter_caps_the_cycles_and_says_so(scene, tmp_path, capsys):
+    """--max-iter is the cycle budget here, and a starved run is reported."""
+    _, _, path = scene
+    status, out, err = run([str(path), "--method", "multigrid", "-o",
+                            str(tmp_path / "out.npy"), "--max-iter", "1",
+                            "--info"], capsys)
+    assert status == 0, err
+    summary = json.loads(out)
+    assert summary["cycles"] == 1
+    assert summary["converged"] is False
+    assert "stopped after 1 V-cycles" in err
+
+
+# --------------------------------------------------------------------------
 # stacks: .npy/.npz may hold more than two dimensions
 # --------------------------------------------------------------------------
 
@@ -715,13 +804,26 @@ def test_reliability_unwraps_a_stack(cube, tmp_path, capsys):
     assert np.abs(wrap_phase(result - truth)).max() < 1e-5
 
 
+def test_multigrid_unwraps_a_stack(cube, tmp_path, capsys):
+    truth, path = cube
+    target = tmp_path / "out.npy"
+    status, out, err = run([str(path), "--method", "multigrid", "--info",
+                            "-o", str(target), "-q"], capsys)
+    assert status == 0, err
+    report = json.loads(out)
+    assert report["shape"] == [4, 12, 16]
+    assert [int(size) for size in report["coarsest"]] == [2, 6, 8]  # halved once
+    result = np.load(str(target))
+    assert np.abs(wrap_phase(result - truth)).max() < 1e-5
+
+
 def test_two_dimensional_method_refuses_a_stack(cube, capsys):
     _, path = cube
     status, _, err = run([str(path), "--method", "goldstein"], capsys)
     assert status == 1
     assert "unwraps a two-dimensional image" in err
     assert "has shape 4x12x16" in err
-    assert "ls, reliability" in err
+    assert ", ".join(ND_METHODS) in err
 
 
 def test_shape_with_three_numbers_is_an_error(cube, tmp_path, capsys):

@@ -125,7 +125,7 @@ The details worth knowing:
 | Flynn minimum discontinuity | `flynn_unwrap` | `flynn` | 2-D | Implemented and reference-tested |
 | Minimum-cost flow (Costantini) | `network_flow_unwrap` | `mcf` | 2-D | Implemented, benchmarked, synthetically tested |
 | Minimum-$L^p$ norm | `unwrap_lp` | `lp` | 2-D | Implemented and synthetically tested |
-| Multigrid families | — | — | — | Not yet ported |
+| Multigrid (Pritt) | `multigrid_unwrap` | `multigrid` | any | Implemented, benchmarked, synthetically tested |
 
 "Rank: any" means any number of axes, each of length at least 2 (see
 [One image, a stack, or a cube](#one-image-a-stack-or-a-cube)); "2-D" means the
@@ -256,7 +256,7 @@ weighted by the confidence of each step, and normalises by $1/(1+S)$ so that a
 larger rating means a more trustworthy pixel. The equations above are therefore
 Parvaneh's own rating on their sorting scheme, and a numerical comparison
 against the original is a comparison of accuracy, not of identity. The
-distinction is repeated in [`references.md`](references.md), entry 11.
+distinction is repeated in [`references.md`](references.md), entry 14.
 
 ### Residues — `phase_residues`
 
@@ -388,6 +388,52 @@ reweighting; the general M-estimator theory is in Huber and Ronchetti, *Robust
 Statistics*, 2nd ed., Wiley, 2009. Derivation:
 [`mathematics.md`](mathematics.md), section 8.
 
+### Multigrid — `multigrid_unwrap`, CLI `multigrid`
+
+A second way to solve the weighted least-squares problem of `ls`. Instead of a
+conjugate-gradient iteration preconditioned by a cosine transform, it relaxes
+the equations on the finest grid, moves the error it cannot smooth to a grid
+with half the samples on every axis, solves that, and adds the correction back.
+That pass is a V-cycle, and cycles repeat until the residual is small. Because
+each grid carries the same weighted-Laplacian operator, the answer is the
+answer of `ls` — the two solvers agree to the tolerance they reach — and the
+difference is only how the linear system is traversed.
+
+In practice:
+
+- It handles any number of dimensions with one code path, so it unwraps an
+  image, a stack or a cube without a special branch. The operator, the transfer
+  operators and the smoother all loop over axes.
+- A cycle count on uniform confidence is essentially independent of size, which
+  is the property a hierarchy is bought for, but each cycle is far more
+  expensive than one conjugate-gradient iteration. Time per pixel is worse than
+  `ls` on every scene measured, by one to two orders of magnitude
+  ([`performance.md`](performance.md)).
+- Weights reach the coarse grids by their row-normalised average, which keeps a
+  uniform weight field uniform; high-contrast weights are the case the
+  hierarchy is weakest on, because a coarse grid can no longer see the fine
+  structure that carries the information. Measured limits, cycle counts and the
+  variational (Galerkin) coarsening that multigrid theory offers as an
+  alternative are in the module docstring of
+  [`parvaneh.multigrid`](../src/parvaneh/multigrid.py) and in section 18 of
+  [`mathematics.md`](mathematics.md); that alternative is *not* a measured fix
+  for the slow cases here.
+- Use it when the hierarchy itself is what you are studying, or when you want a
+  second, structurally different solution of the same normal equations as a
+  cross-check. For production unwrapping with coherence weights, `ls` is the
+  recommendation.
+
+**Where this comes from.** Pritt, "Phase unwrapping by means of multigrid
+techniques for interferometric SAR", *IEEE TGRS* **34**(3), 728–738, 1996
+(<https://doi.org/10.1109/36.499752>), for the unwrapping formulation on a grid
+hierarchy; Briggs, Henson and McCormick, *A Multigrid Tutorial*, 2nd ed., SIAM,
+2000, chapters 3–4, for the V-cycle, the transfer operators and full weighting;
+Trottenberg, Oosterlee and Schuller, *Multigrid*, Academic Press, 2001, for the
+smoothing and coarsening analysis; and Ghiglia and Pritt, *Two-Dimensional Phase
+Unwrapping*, Wiley, 1998, chapter 5, for the two-dimensional multigrid of the
+book this package ports. Derivation: [`mathematics.md`](mathematics.md),
+section 18.
+
 ## Choosing a method
 
 | Situation | Suggested method |
@@ -397,6 +443,7 @@ Statistics*, 2nd ed., Wiley, 2009. Derivation:
 | Known reliability map (coherence, amplitude) | `ls --weight coherence.npy` |
 | Very large raster, smooth phase, speed matters | `quality-guided` |
 | Moderate noise, visible seams are unacceptable | `lp` |
+| A second, independent solution of the same normal equations | `multigrid` |
 | Real $2\pi$ discontinuities that must not be smoothed | `flynn` |
 | Those discontinuities must be handled exactly, not heuristically | `mcf` |
 | Weighted, residue-heavy scene where the integer jumps are the unknown | `mcf --cost quadratic` |
@@ -413,8 +460,10 @@ A **mask** says which pixels hold a valid measurement (non-zero means valid).
 Masked pixels are excluded from the answer and, for the cycle-based methods,
 from the cut search. A **weight** is the smoother, continuous version of the
 same information and is only meaningful for least-squares-style methods
-(`ls`, and internally `lp`). Use a mask when pixels are definitely invalid
-(shadow, water, layover) and a weight when they are merely unreliable.
+(`ls`, and internally `lp` and `multigrid`). Use a mask when pixels are
+definitely invalid (shadow, water, layover) and a weight when they are merely
+unreliable. `reliability` and `mcf` also accept `--weight`: they use the same
+raster as an edge cost rather than as a least-squares penalty.
 
 Neither can create information that is not in the data. A mask that is too
 aggressive disconnects the image into islands; residues then have nowhere to
@@ -440,17 +489,23 @@ methods without a compiled kernel ignore the request (with a note on stderr).
 
 Backend coverage is not uniform:
 
-- The least-squares and $L^p$ families accept every backend in the table. The
-  compiled `numba` and `cython` kernels and the `cupy` path are 2-D
-  implementations; a higher-rank array runs on the remaining CPU backend.
+- The least-squares family accepts every backend in the table. The compiled
+  `numba` and `cython` kernels and the `cupy` path are 2-D implementations; a
+  higher-rank array runs on the remaining CPU backend.
 - `quality-guided` and `reliability` choose between `numba` and `python`, their
   own kernels rather than a general linear-algebra backend. Reliability's Numba
   kernel is rank-independent and is bit-identical to its Python reference; for a
   large volume the compiled kernel is roughly an order of magnitude faster,
   which is why `auto` selects it when available.
 - `goldstein`, `mask-cut`, `flynn` and `mcf` are fixed implementations and
-  accept no backend choice at all. The flow solver is pure Python on integer
-  arithmetic; a compiled kernel would change nothing about the result.
+  accept no backend choice at all: naming one is a note on stderr, not an error.
+  The flow solver is pure Python on integer arithmetic; a compiled kernel would
+  change nothing about the result.
+- `lp` takes no backend of its own: its iteratively reweighted outer loop always
+  runs on the NumPy least-squares solver.
+- `multigrid` is fixed in the same way, and its `--info` block reports `numpy`,
+  the only engine it has. Its smoother is written as whole-array expressions, so
+  a compiled kernel would have to be a rewrite, not a drop-in.
 
 ## The two unobservable quantities
 
@@ -505,6 +560,15 @@ explicitly:
 - R. K. Ahuja, T. L. Magnanti and J. B. Orlin, *Network Flows: Theory,
   Algorithms, and Applications*. Prentice Hall, 1993. ISBN 978-0-13-617549-0. —
   section 9.3, Algorithm 9.5, the successive shortest augmenting path solver.
+- M. D. Pritt, "Phase unwrapping by means of multigrid techniques for
+  interferometric SAR", *IEEE Transactions on Geoscience and Remote Sensing*
+  **34**(3), 728–738, 1996. <https://doi.org/10.1109/36.499752> — the multigrid
+  formulation behind `multigrid_unwrap` and the `multigrid` method.
+- W. L. Briggs, V. E. Henson and S. F. McCormick, *A Multigrid Tutorial*, 2nd
+  ed. SIAM, 2000. ISBN 978-0-89871-462-3. — chapters 3–4: the V-cycle, the
+  transfer operators and full weighting.
+- U. Trottenberg, C. W. Oosterlee and A. Schuller, *Multigrid*. Academic Press,
+  2001. ISBN 978-0-12-701070-0.
 - The derivations of every equation above:
   [`mathematics.md`](mathematics.md).
 - The complete bibliography, including books, the numerical-methods sources and

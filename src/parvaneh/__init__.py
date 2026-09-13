@@ -15,6 +15,7 @@ from .diagnostics import discontinuity_map, surface_difference
 from .flynn import flynn_unwrap
 from .reliability import ReliabilityInfo, pixel_reliability, reliability_unwrap
 from .network_flow import NetworkFlowInfo, network_flow_unwrap
+from .multigrid import MultigridInfo, multigrid_unwrap
 from .raster import (RasterError, RasterMeta, NoRasterBackendError,
                      read_raster, raster_backend, write_raster)
 
@@ -32,6 +33,7 @@ __all__ = [
     "flynn_unwrap",
     "pixel_reliability", "reliability_unwrap", "ReliabilityInfo",
     "network_flow_unwrap", "NetworkFlowInfo",
+    "multigrid_unwrap", "MultigridInfo",
     "read_raster", "write_raster", "raster_backend", "RasterMeta",
     "RasterError", "NoRasterBackendError",
 ]

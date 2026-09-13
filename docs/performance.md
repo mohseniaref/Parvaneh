@@ -168,3 +168,92 @@ implementation is aimed at small and medium scenes, at exact reference answers,
 and at validating a faster or GPU solver. Nothing in the formulation is
 Python-specific; the network and the objective do not change if the
 augmenting-path search is replaced by a compiled or parallel one.
+
+## Multigrid
+
+`benchmarks/benchmark_multigrid.py` builds each scene in memory
+(`make_synthetic`, noise 0.6 rad, seed 11), unwraps it with the multigrid solver
+and with the transform-preconditioned conjugate-gradient solver on the same
+weight field, and records each solver's own work counters next to its time. It
+needs no raster and no GPU. The tolerance is 1e-10, each V-cycle smooths twice
+before and twice after, the cycle cap is 200, and every cell is one timed run on
+the same Intel Core i7-8650U as the sections above:
+
+| Size | Weight field | MG cycles | MG time | CG iterations | CG time | Ratio |
+|---|---:|---:|---:|---:|---:|---:|
+| 16x16 | uniform | 12 | 0.062 s | 1 | under 0.001 s | 129x |
+| 16x16 | mask | 16 | 0.083 s | 16 | 0.002 s | 41x |
+| 128x128 | uniform | 13 | 0.479 s | 1 | 0.005 s | 96x |
+| 128x128 | mask | 79 | 1.924 s | 39 | 0.044 s | 44x |
+| 256x256 | uniform | 13 | 0.864 s | 1 | 0.018 s | 47x |
+| 256x256 | mask | 155 | 9.580 s | 56 | 0.675 s | 14x |
+| 512x512 | uniform | 12 | 1.914 s | 1 | 0.051 s | 37x |
+| 512x512 | mask | 200, stalled at 8.0e-09 | 31.933 s | 72 | 3.104 s | 10x |
+
+Read the two columns together, because neither means much alone.
+
+* **The cycle count is flat, and that is what the hierarchy buys.** The uniform
+  field takes 12, 13, 13 and 12 cycles at 16x16, 128x128, 256x256 and 512x512:
+  the same answer for a scene holding a thousand times more samples. Plain
+  Gauss--Seidel on the finest grid alone, with the very same smoother and a
+  500-sweep budget, is nowhere near the tolerance -- 1.8e-03 on the 128x128
+  uniform scene and 3.9e-04 on the 512x512 one. The flat count is the coarse
+  grids doing the long-wavelength work, not a particularly good smoother.
+
+* **A cycle is not a sweep.** One V-cycle visits every level, so it is worth
+  about 5.3 sweeps of the finest grid; the benchmark stores that number per cell
+  as `fine_sweep_equivalents`. Thirteen cycles is therefore some 70 fine sweeps
+  at any size, which is also the honest way to compare multigrid with plain
+  relaxation: per cycle the hierarchy contracts by 0.17 to 0.23 on the uniform
+  field, per sweep plain relaxation manages only 0.95 to 0.99, so it creeps
+  rather than converges.
+
+* **The transform solver is faster here, by 10 to 130 times.** With a uniform
+  weight field conjugate gradient needs a single iteration, because the cosine
+  transform then inverts the operator exactly, and no hierarchy can compete with
+  that. On the other weight fields it needs 38 to 72 iterations, and it still
+  wins everywhere in the table. The hierarchy's own case is the one where that
+  transform is unavailable: on an irregular domain, under a mask that is not a
+  rectangle, or in three dimensions, where one smoothed stencil and one smoother
+  still suffice, while a transform of the same kind does not exist.
+
+* **The mask is where the count grows.** It runs a cut across the grid, which
+  leaves four islands that share no data and slows every transfer between the
+  levels: 16, 79, 155 cycles as the grid grows from 16x16 to 256x256, and a
+  stall just short of the tolerance at 512x512 after 200 cycles. Smoothing more
+  per cycle buys most of that back -- 125, 79, 58 and 40 cycles at 128x128 for
+  one, two, four and ten sweeps a side, in 3.068, 1.924, 2.232 and 3.231 s --
+  which says the smoother, not the hierarchy, is doing the work there.
+
+The two high-contrast fields are the failure case the module's docstring warns
+about. Neither converges within 200 cycles, and the stalled answer is materially
+worse, not merely less well converged:
+
+| Size | Weight field | Cycles | Relative residual | MG RMSE | CG RMSE |
+|---|---:|---:|---:|---:|---:|
+| 128x128 | thin lines at 1e-2 | 200 | 2.2e-06 | 1.939 rad | 1.601 rad |
+| 128x128 | 16x16 blocks at 2e-3 | 200 | 2.1e-07 | 3.580 rad | 1.619 rad |
+| 256x256 | thin lines at 1e-2 | 200 | 1.5e-06 | 1.762 rad | 1.342 rad |
+| 256x256 | 16x16 blocks at 2e-3 | 200 | 1.3e-07 | 3.162 rad | 1.135 rad |
+
+The stalls are not a rounding detail. At 128x128 the stalled thin-line answer is
+1.94 rad RMS from the truth against 1.60 for the converging solver, and the
+blocky one 3.58 against 1.62; at 256x256 the pattern repeats, 1.76 against 1.34
+and 3.16 against 1.14. A radian of RMS error is a different answer, not a less
+converged one, and one sweep a side on the blocky field does not even stall: it
+diverges, reaching 9.8e+43 after 200 cycles.
+Coarsening the operator itself (Galerkin, $L_{\ell+1} = R L_\ell P$) instead of
+re-deriving the coarse weights is the remedy multigrid theory prescribes
+(Trottenberg et al. 2001, section 7); it costs the five-point stencil on the
+coarse levels, and is left to later work.
+
+On the four measured fields the multigrid family is thus the more predictable
+solver, not the faster one: its work per cycle is bounded, its failures are
+visible in the counters, and its cost grows with the number of cycles rather than
+with the grid. Where such a transform applies, the solver described in
+[`algorithms.md`](algorithms.md) is the recommendation, and where the weights
+have high contrast it is the requirement.
+The JSON reports behind these tables are reproduced by the commands in the
+docstring of
+[`benchmarks/benchmark_multigrid.py`](../benchmarks/benchmark_multigrid.py);
+the derivation is in section 18 of [`mathematics.md`](mathematics.md).
