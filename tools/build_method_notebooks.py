@@ -199,7 +199,12 @@ Mean-aligned RMSE removes a constant offset but does not certify absolute phase.
 for filename,title,fn,explanation in [
  ('goldstein_branch_cuts.ipynb','Goldstein branch cuts: neutralize a charged region','goldstein_unwrap',
   'Expand a search box around a charged cell. Gather other charges until the group is balanced, '
-  'connecting them by cuts; if needed connect to the boundary. The cut map records forbidden traversal pixels.'),
+  'connecting them by cuts; if needed connect to the boundary. The cut map records forbidden traversal pixels. '
+  'This is the method in which the integration path must not cross the cut. During path following, pixels on '
+  'opposite sides of a cut are not treated as neighbours. The path may go around a cut endpoint, but crossing '
+  'the barrier could make two routes enclose a non-zero residue and disagree by a whole turn. A cut does not '
+  'delete the phase measurement: it temporarily removes adjacency links, and cut pixels may be filled later '
+  'from an already unwrapped side.'),
  ('quality_mask_cuts.ipynb','Mask cuts: grow and thin a barrier','mask_cut_unwrap',
   'Start from charged cells, grow paths using the implementation’s minimum-gradient priority until charge '
   'is balanced or a boundary is reached, then thin the resulting mask while preserving required connections.')]:
@@ -218,17 +223,30 @@ heuristic geometric decision, not the same optimization as minimum-cost flow.
 v=np.pi*np.array([[0,.6],[-.2,-.8]])
 charge=pv.phase_residues(v)
 assert charge[0,0]==1
-fig,axes=plt.subplots(1,2,figsize=(8,3))
+fig,axes=plt.subplots(1,2,figsize=(10,3.8),constrained_layout=True)
 axes[0].imshow(v/np.pi,cmap='twilight'); axes[0].set_title('Four measured phases / π')
 for r,c in np.ndindex(v.shape): axes[0].text(c,r,f'{v[r,c]/np.pi:.1f}',ha='center')
-axes[1].scatter([0,2],[0,0],c=['#b83d52','#2463a6'],s=200)
-axes[1].plot([0,2],[0,0],'k--',label='Illustrative connecting cut')
-axes[1].text(0,.12,'+1',ha='center'); axes[1].text(2,.12,'−1',ha='center')
-axes[1].set(xlim=(-.5,2.5),ylim=(-.4,.5),title='A balanced pair'); axes[1].axis('off')
+ax=axes[1]
+for x in range(7): ax.plot([x,x],[0,5],color='.85',lw=.8,zorder=0)
+for y in range(6): ax.plot([0,6],[y,y],color='.85',lw=.8,zorder=0)
+ax.scatter([3.5,3.5],[1.5,3.5],c=['#b83d52','#2463a6'],s=180,zorder=4)
+ax.text(3.5,1.5,'+1',color='white',ha='center',va='center',weight='bold',zorder=5)
+ax.text(3.5,3.5,'−1',color='white',ha='center',va='center',weight='bold',zorder=5)
+ax.plot([3,3],[1.5,3.5],color='black',lw=6,label='branch cut')
+ax.plot([.5,5.5],[2.5,2.5],'--',color='#c43c39',lw=2,label='forbidden crossing')
+ax.plot([.5,2.5,2.5,5.5,5.5],[2.5,2.5,4.5,4.5,2.5],
+        color='#2b8c5a',lw=2,label='allowed detour')
+ax.scatter([.5,5.5],[2.5,2.5],color='#6a51a3',s=45,zorder=4)
+ax.set(xlim=(-.1,6.1),ylim=(-.1,5.1),aspect='equal',
+       title='The path goes around, never across, the cut')
+ax.legend(loc='upper center',bbox_to_anchor=(.5,-.08),ncol=1,frameon=False)
+ax.set_xticks([]); ax.set_yticks([])
 plt.show()
 ''',r'''
-The dashed line is a schematic barrier between two cells, not the measured cut
-map. The actual implementation returns a boolean pixel mask, shown next.
+The black segment is a schematic barrier joining a positive and a negative
+residue. The red route is forbidden because it crosses that barrier; the green
+route reaches the same destination by going around the endpoint. The actual
+implementation returns a boolean pixel mask, shown next.
 Residues are on cell corners, so their charge array has one fewer row and column
 than the input phase. Do not mistake this for lost data.
 ''',f'''
