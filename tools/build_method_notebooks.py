@@ -262,8 +262,31 @@ returned mask on the larger synthetic scene.
 ''',f'''
 truth,phase,confidence=scene()
 u,cuts=pv.{fn}(phase,return_cuts=True)
-images([phase,pv.phase_residues(phase),cuts],['Wrapped phase','Cell residues','Computed cut pixels'])
-print('Cut pixels:',np.count_nonzero(cuts)); report(u,truth,phase)
+residues=pv.phase_residues(phase)
+positive=np.argwhere(residues==1); negative=np.argwhere(residues==-1)
+fig,axes=plt.subplots(1,4,figsize=(14,3.4),constrained_layout=True)
+axes[0].imshow(phase,cmap='twilight',vmin=-np.pi,vmax=np.pi)
+axes[0].set_title('Wrapped phase')
+axes[1].imshow(residues,cmap='bwr',vmin=-1,vmax=1)
+axes[1].set_title('Residue cells')
+axes[2].imshow(cuts,cmap='Greys',vmin=0,vmax=1)
+axes[2].set_title('Returned cut pixels')
+axes[3].imshow(phase,cmap='twilight',vmin=-np.pi,vmax=np.pi,alpha=.35)
+axes[3].imshow(np.ma.masked_where(~cuts,cuts),cmap='Greys',vmin=0,vmax=1)
+axes[3].scatter(positive[:,1]+.5,positive[:,0]+.5,c='#b83d52',s=70,
+                marker='+',linewidths=2,label='+1 residue')
+axes[3].scatter(negative[:,1]+.5,negative[:,0]+.5,c='#2463a6',s=70,
+                marker='_',linewidths=2,label='−1 residue')
+axes[3].set_title('Residues over actual cuts')
+axes[3].legend(loc='upper center',bbox_to_anchor=(.5,-.12),frameon=False)
+for ax in axes: ax.set(xlabel='column',ylabel='row')
+plt.show()
+table(['Evidence','Value'],[
+    ['Positive residue cells',positive.tolist()],
+    ['Negative residue cells',negative.tolist()],
+    ['Net residue charge',int(residues.sum())],
+    ['Cut pixels',np.argwhere(cuts).tolist()]])
+report(u,truth,phase)
 ''','''
 clean=.3*np.add.outer(np.arange(8),np.arange(9)); wrapped=W(clean)
 rows=[]
