@@ -183,7 +183,6 @@ and time-series methods.
 | [`docs/raster_io.md`](docs/raster_io.md) | reading and writing GeoTIFF and other GDAL rasters |
 | [`docs/porting_status.md`](docs/porting_status.md) | per-algorithm porting and validation status |
 | [`docs/phase_unwrapping_history_and_theory.md`](docs/phase_unwrapping_history_and_theory.md) | historical and theoretical background |
-| [`docs/repository_scope.md`](docs/repository_scope.md) | what the repository contains and what the license covers |
 | [`docs/release_checklist.md`](docs/release_checklist.md) | the release process |
 
 ## Citation
@@ -208,5 +207,4 @@ provided in [`.zenodo.json`](.zenodo.json).
 Parvaneh's independently written source and documentation are released under
 the [BSD 3-Clause License](LICENSE). The license covers the files distributed as
 part of this repository; it does not grant rights to separately obtained
-third-party material. The boundary is documented in
-[`docs/repository_scope.md`](docs/repository_scope.md).
+third-party material.

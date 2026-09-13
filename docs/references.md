@@ -22,8 +22,7 @@ documentation against the original publication.
 
 **Nothing from these sources is redistributed in this repository.** The code is
 independently written, the worked examples were computed here, and the
-explanations were written for this project. See
-[`repository_scope.md`](repository_scope.md) for the full boundary.
+explanations were written for this project.
 
 ---
 
