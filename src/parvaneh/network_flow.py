@@ -391,7 +391,7 @@ def network_flow_unwrap(phase, weight=None, mask=None, *, cost="linear",
     >>> ramp = np.arange(12).reshape(3, 4) * 0.9
     >>> from parvaneh.synthetic import wrap_phase
     >>> result = network_flow_unwrap(wrap_phase(ramp))
-    >>> np.abs(wrap_phase(result - ramp)).max() < 1e-5
+    >>> bool(np.abs(wrap_phase(result - ramp)).max() < 1e-5)
     True
 
     Notes
