@@ -201,10 +201,10 @@ for filename,title,fn,explanation in [
   'Expand a search box around a charged cell. Gather other charges until the group is balanced, '
   'connecting them by cuts; if needed connect to the boundary. The cut map records forbidden traversal pixels. '
   'This is the method in which the integration path must not cross the cut. During path following, pixels on '
-  'opposite sides of a cut are not treated as neighbours. The path may go around a cut endpoint, but crossing '
-  'the barrier could make two routes enclose a non-zero residue and disagree by a whole turn. A cut does not '
-  'delete the phase measurement: it temporarily removes adjacency links, and cut pixels may be filled later '
-  'from an already unwrapped side.'),
+  'the cut are temporarily excluded, so a path cannot enter or cross the chain of cut pixels. This prevents '
+  'two routes from enclosing a non-zero residue and disagreeing by a whole turn. Classical diagrams draw a '
+  'branch cut as a curve joining residue cells; this implementation rasterizes that curve as a boolean pixel '
+  'mask. It fills those pixels later from an already unwrapped neighbour.'),
  ('quality_mask_cuts.ipynb','Mask cuts: grow and thin a barrier','mask_cut_unwrap',
   'Start from charged cells, grow paths using the implementation’s minimum-gradient priority until charge '
   'is balanced or a boundary is reached, then thin the resulting mask while preserving required connections.')]:
@@ -220,35 +220,45 @@ After constructing cuts, integrate only through allowed paths. Then fill cut
 pixels from adjacent integrated pixels where possible. Cut placement is a
 heuristic geometric decision, not the same optimization as minimum-cost flow.
 ''','''
-v=np.pi*np.array([[0,.6],[-.2,-.8]])
-charge=pv.phase_residues(v)
-assert charge[0,0]==1
-fig,axes=plt.subplots(1,2,figsize=(10,3.8),constrained_layout=True)
-axes[0].imshow(v/np.pi,cmap='twilight'); axes[0].set_title('Four measured phases / π')
-for r,c in np.ndindex(v.shape): axes[0].text(c,r,f'{v[r,c]/np.pi:.1f}',ha='center')
-ax=axes[1]
-for x in range(7): ax.plot([x,x],[0,5],color='.85',lw=.8,zorder=0)
-for y in range(6): ax.plot([0,6],[y,y],color='.85',lw=.8,zorder=0)
-ax.scatter([3.5,3.5],[1.5,3.5],c=['#b83d52','#2463a6'],s=180,zorder=4)
-ax.text(3.5,1.5,'+1',color='white',ha='center',va='center',weight='bold',zorder=5)
-ax.text(3.5,3.5,'−1',color='white',ha='center',va='center',weight='bold',zorder=5)
-ax.plot([3,3],[1.5,3.5],color='black',lw=6,label='branch cut')
-ax.plot([.5,5.5],[2.5,2.5],'--',color='#c43c39',lw=2,label='forbidden crossing')
-ax.plot([.5,2.5,2.5,5.5,5.5],[2.5,2.5,4.5,4.5,2.5],
-        color='#2b8c5a',lw=2,label='allowed detour')
-ax.scatter([.5,5.5],[2.5,2.5],color='#6a51a3',s=45,zorder=4)
-ax.set(xlim=(-.1,6.1),ylim=(-.1,5.1),aspect='equal',
-       title='The path goes around, never across, the cut')
-ax.legend(loc='upper center',bbox_to_anchor=(.5,-.08),ncol=1,frameon=False)
-ax.set_xticks([]); ax.set_yticks([])
+rows=cols=11
+y,x=np.mgrid[:rows,:cols]
+vortex=(4.5,4.5); antivortex=(6.5,4.5)
+pair_phase=W(np.angle((x-vortex[0])+1j*(y-vortex[1]))
+             -np.angle((x-antivortex[0])+1j*(y-antivortex[1])))
+charge=pv.phase_residues(pair_phase)
+_,cut_pixels=pv.goldstein_unwrap(pair_phase,return_cuts=True,max_cut_length=20)
+positive=np.argwhere(charge==1); negative=np.argwhere(charge==-1)
+assert positive.tolist()==[[4,4]] and negative.tolist()==[[4,6]]
+assert np.argwhere(cut_pixels).tolist()==[[4,5],[4,6]]
+fig,axes=plt.subplots(1,3,figsize=(12,3.7),constrained_layout=True)
+axes[0].imshow(pair_phase,cmap='twilight',vmin=-np.pi,vmax=np.pi)
+axes[0].set_title('Wrapped vortex pair')
+axes[1].imshow(np.zeros_like(pair_phase),cmap='Greys',vmin=0,vmax=1)
+axes[1].plot([4.5,6.5],[4.5,4.5],color='#d8a100',lw=6,
+             label='conceptual branch cut')
+axes[1].scatter([4.5,6.5],[4.5,4.5],c=['#b83d52','#2463a6'],s=220,zorder=3)
+axes[1].text(4.5,4.5,'+1',color='white',ha='center',va='center',weight='bold')
+axes[1].text(6.5,4.5,'−1',color='white',ha='center',va='center',weight='bold')
+axes[1].set_title('Residues live in 2×2 cells')
+axes[2].imshow(cut_pixels,cmap='Greys',vmin=0,vmax=1)
+axes[2].scatter([4.5,6.5],[4.5,4.5],c=['#b83d52','#2463a6'],s=170,zorder=3)
+axes[2].text(4.5,4.5,'+1',color='white',ha='center',va='center',weight='bold')
+axes[2].text(6.5,4.5,'−1',color='white',ha='center',va='center',weight='bold')
+axes[2].set_title('Returned boolean cut pixels')
+for ax in axes:
+    ax.set(xlabel='column',ylabel='row',xticks=range(0,11,2),yticks=range(0,11,2))
 plt.show()
+print('Positive residue [row, col]:',positive.tolist())
+print('Negative residue [row, col]:',negative.tolist())
+print('Cut pixels [row, col]:',np.argwhere(cut_pixels).tolist())
 ''',r'''
-The black segment is a schematic barrier joining a positive and a negative
-residue. The red route is forbidden because it crosses that barrier; the green
-route reaches the same destination by going around the endpoint. The actual
-implementation returns a boolean pixel mask, shown next.
-Residues are on cell corners, so their charge array has one fewer row and column
-than the input phase. Do not mistake this for lost data.
+The middle panel shows the mathematical idea: the positive and negative residue
+cells are paired by one branch cut. The right panel shows this implementation's
+representation of that same connection. Black entries are actual pixels skipped
+during the first integration pass, not edges between pixels. The coloured
+markers remain at cell centres, which is why they are offset by half a sample
+from the cut-pixel coordinates printed below. The next example shows the same
+returned mask on the larger synthetic scene.
 ''',f'''
 truth,phase,confidence=scene()
 u,cuts=pv.{fn}(phase,return_cuts=True)

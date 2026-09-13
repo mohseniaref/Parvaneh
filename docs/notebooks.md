@@ -33,7 +33,7 @@ are saved from actual Jupyter execution. All explanations are in English.
 | Least squares, weighted and unweighted | [least_squares_and_weights](../notebooks/least_squares_and_weights.ipynb) | explicit four-pixel matrix, normal equations, squared endpoint weights |
 | Quality-guided paths | [quality_guided_unwrapping](../notebooks/quality_guided_unwrapping.ipynb) | parent proposal, numbered traversal, priority comparison |
 | Reliability sorting | [reliability_sorting](../notebooks/reliability_sorting.ipynb) | reliability arithmetic, edge sorting, four successive tree states |
-| Goldstein branch cuts | [goldstein_branch_cuts](../notebooks/goldstein_branch_cuts.ipynb) | residue charge, connecting cuts, forbidden crossing versus allowed detour, actual cut mask |
+| Goldstein branch cuts | [goldstein_branch_cuts](../notebooks/goldstein_branch_cuts.ipynb) | computed positive/negative residue pair, conceptual connection, actual cut-pixel mask |
 | Quality-guided mask cuts | [quality_mask_cuts](../notebooks/quality_mask_cuts.ipynb) | mask growth and thinning, comparison on a clean ramp |
 | Flynn minimum discontinuity | [flynn_minimum_discontinuity](../notebooks/flynn_minimum_discontinuity.ipynb) | region shift, integer jumps, quality and sweep counts |
 | Minimum-cost flow | [minimum_cost_flow](../notebooks/minimum_cost_flow.ipynb) | four correction choices, dual graph, verified optimal single-cell cost |
