@@ -6,6 +6,7 @@
 [![Release: alpha](https://img.shields.io/badge/release-0.1.0a1-D94F88.svg)](https://github.com/mohseniaref/Parvaneh/releases)
 [![License: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-D94F88.svg)](LICENSE)
 [![Tests](https://github.com/mohseniaref/Parvaneh/actions/workflows/tests.yml/badge.svg)](https://github.com/mohseniaref/Parvaneh/actions/workflows/tests.yml)
+[![DOI](https://zenodo.org/badge/1365226572.svg)](https://doi.org/10.5281/zenodo.22736245)
 
 **Parvaneh** (Persian: پروانه, *butterfly*) is a Python package for phase
 unwrapping, written to be used for research, for teaching, and for everyday
@@ -193,7 +194,14 @@ foundational reference is:
 > D. C. Ghiglia and M. D. Pritt, *Two-Dimensional Phase Unwrapping: Theory,
 > Algorithms, and Software*. New York: Wiley, 1998.
 
-Release metadata for Zenodo are provided in [`.zenodo.json`](.zenodo.json).
+To cite this software release:
+
+> M. Mohseni Aref, *Parvaneh: Accelerated phase unwrapping*, version 0.1.0a1,
+> Zenodo, 2026. <https://doi.org/10.5281/zenodo.22736246>
+
+The version-independent DOI for citing Parvaneh generally is
+<https://doi.org/10.5281/zenodo.22736245>. Release metadata for Zenodo are
+provided in [`.zenodo.json`](.zenodo.json).
 
 ## License
 
